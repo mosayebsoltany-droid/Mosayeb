@@ -262,6 +262,17 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
         mic.setText("🎙");
         listening = false;
     }
+
+    private void sayWithStyle(String persian, String fallback, boolean female) {
+        status.setText(persian);
+        if(speaker != null) {
+            speaker.setPitch(female ? 1.28f : 0.92f);
+            String spoken = persianVoiceAvailable ? persian : fallback;
+            speaker.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, female ? "mose_female" : "mose_male");
+        }
+        mic.setText("🎙");
+        listening = false;
+    }
     private void openPackage(String pkg,String label) {
         Intent i=getPackageManager().getLaunchIntentForPackage(pkg);
         if(i==null) reply(label+" روی گوشی پیدا نشد."); else launch(i,label);
@@ -278,8 +289,8 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
 
     private void showLawyerModule() {
         liveText.setText("وکیل Mose");
-        addBubble("Mose", "چشم سلطان؛ میز وکیل باز شد.", false);
-        say("Vakil Mose baz shod, Soltan.");
+        addBubble("وکیل Mose", "سلطان، چه کنم؟", false);
+        sayWithStyle("سلطان، چه کنم؟", "Soltan, che konam?", false);
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("⚖ وکیل Mose")
                 .setMessage("میز خصوصی پرونده‌ها\n\nاز این بخش می‌توانید یک سند را از حافظه گوشی انتخاب کنید. اطلاعات پرونده در کد عمومی برنامه ذخیره نمی‌شود.")
@@ -319,8 +330,14 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
             action = "بازکردن تقویم";
         }
         liveText.setText(role + " Mose");
-        addBubble("Mose", "چشم سلطان؛ بخش " + role + " باز شد.", false);
-        say("Cheshm, Soltan.");
+        String greeting = role.equals("منشی") ? "سلطان، دستور بدهید."
+                : role.equals("کارمند") ? "سلطان، به سلامت باد."
+                : "سلطان، حساب‌ها در خدمت شماست.";
+        String spoken = role.equals("منشی") ? "Soltan, dastoor bedahid."
+                : role.equals("کارمند") ? "Soltan, be salamat bad."
+                : "Soltan, hesabha dar khedmat-e shomast.";
+        addBubble(role + " Mose", greeting, false);
+        sayWithStyle(greeting, spoken, role.equals("منشی"));
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setMessage(message)
