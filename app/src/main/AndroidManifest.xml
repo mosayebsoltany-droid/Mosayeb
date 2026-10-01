@@ -21,6 +21,11 @@
         android:label="Mose سلطان"
         android:supportsRtl="true"
         android:theme="@style/Theme.HiMose">
+        <activity
+            android:name=".LawyerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
 
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
