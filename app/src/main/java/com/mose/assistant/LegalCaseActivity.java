@@ -66,10 +66,10 @@ public class LegalCaseActivity extends AppCompatActivity {
         aiLog=text("سلطان، سؤال حقوقی یا دستور تنظیم متن را بفرمایید.",14,Color.rgb(247,231,207),Typeface.NORMAL);aiLog.setGravity(Gravity.RIGHT);aiLog.setPadding(0,dp(10),0,dp(10));aiCard.addView(aiLog);
         aiInput=new EditText(this);aiInput.setHint("سؤال یا دستور شما؛ فقط همین متن ارسال می‌شود");aiInput.setTextColor(Color.WHITE);aiInput.setHintTextColor(Color.rgb(177,150,130));aiInput.setTextDirection(View.TEXT_DIRECTION_RTL);aiInput.setMinLines(2);aiCard.addView(aiInput,params(-1,-2,4,8));
         LinearLayout aiButtons=new LinearLayout(this);aiButtons.setOrientation(LinearLayout.HORIZONTAL);
-        Button settings=button("تنظیم کلید AI");settings.setOnClickListener(v->configureAi());aiButtons.addView(settings,new LinearLayout.LayoutParams(0,dp(50),1));
+        Button settings=button("اتصال Gemini برای PDF");settings.setOnClickListener(v->configureAi());aiButtons.addView(settings,new LinearLayout.LayoutParams(0,dp(50),1));
         Button send=button("ارسال سؤال");send.setOnClickListener(v->askAi());LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(50),1);sp.setMargins(dp(8),0,0,0);aiButtons.addView(send,sp);
         aiCard.addView(aiButtons);
-        Button reviewers=button("تنظیم بازبین‌های DeepSeek و OpenAI");reviewers.setOnClickListener(v->configureReviewers());aiCard.addView(reviewers,params(-1,dp(48),9,0));
+        Button reviewers=button("اتصال DeepSeek و OpenAI (الزامی)");reviewers.setOnClickListener(v->configureReviewers());aiCard.addView(reviewers,params(-1,dp(48),9,0));
         root.addView(aiCard,params(-1,-2,4,14));
 
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
@@ -94,13 +94,12 @@ public class LegalCaseActivity extends AppCompatActivity {
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),0,dp(14),0);
         EditText deep=new EditText(this);deep.setHint("کلید API دیپ‌سیک");deep.setSingleLine(true);box.addView(deep);
         EditText open=new EditText(this);open.setHint("کلید OpenAI API");open.setSingleLine(true);box.addView(open);
-        new AlertDialog.Builder(this).setTitle("بازبینی چندمدلی")
-                .setMessage("متن تولیدشده برای نقد به DeepSeek و سپس برای بازبینی نهایی به OpenAI ارسال می‌شود. هر دو کلید اختیاری‌اند.")
+        new AlertDialog.Builder(this).setTitle("اتصال الزامی نویسنده و بازبین")
+                .setMessage("DeepSeek متن حقوقی را می‌نویسد و OpenAI نسخه نهایی را بازبینی می‌کند. برای تولید هوشمند، ثبت هر دو کلید الزامی است.")
                 .setView(box).setNegativeButton("انصراف",null).setPositiveButton("ذخیره",(d,w)->{
-                    SharedPreferences.Editor e=p.edit();
-                    if(!deep.getText().toString().trim().isEmpty())e.putString("deepseek_key",deep.getText().toString().trim());
-                    if(!open.getText().toString().trim().isEmpty())e.putString("openai_key",open.getText().toString().trim());
-                    e.apply();message("تنظیمات بازبین‌ها ذخیره شد.");
+                    String dk=deep.getText().toString().trim(),ok=open.getText().toString().trim();
+                    if(dk.isEmpty()||ok.isEmpty()){message("هر دو کلید DeepSeek و OpenAI الزامی‌اند و چیزی ذخیره نشد.");return;}
+                    p.edit().putString("deepseek_key",dk).putString("openai_key",ok).apply();message("اتصال DeepSeek و OpenAI ذخیره شد.");
                 }).show();
     }
 
@@ -113,7 +112,10 @@ public class LegalCaseActivity extends AppCompatActivity {
     }
     private void confirmDocumentAnalysis(Uri uri){
         String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
-        if(key.isEmpty()){configureAi();return;}
+        SharedPreferences settings=getSharedPreferences("mose_private_settings",MODE_PRIVATE);
+        String deep=settings.getString("deepseek_key",""),open=settings.getString("openai_key","");
+        if(key.isEmpty()){message("برای خواندن PDF ابتدا اتصال Gemini را ثبت کنید.");configureAi();return;}
+        if(deep.isEmpty()||open.isEmpty()){message("برای تحلیل نهایی PDF، اتصال DeepSeek و OpenAI نیز الزامی است.");configureReviewers();return;}
         String name=getDisplayName(uri);long size=getDocumentSize(uri);
         if(size>10L*1024L*1024L){message("حجم این فایل بیشتر از ۱۰ مگابایت است. برای حفظ پایداری، فایل را کم‌حجم یا به چند بخش تقسیم کنید.");return;}
         String sizeText=size>0?String.format(java.util.Locale.US,"%.1f مگابایت",size/1048576.0):"نامشخص";
@@ -137,8 +139,8 @@ public class LegalCaseActivity extends AppCompatActivity {
             if(code>=400)throw new Exception("Gemini "+code);
             String answer=new JSONObject(raw.toString()).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
             String request="راستی‌آزمایی تحلیل حقوقی سند «"+name+"» در پرونده «"+caseName+"»";
-            String reviewed=reviewWithDeepSeek(request,answer);String finalText=reviewWithOpenAI(request,reviewed);
-            String label="تحلیل سند: "+name+"\n"+(reviewed.equals(answer)?"⚠ بدون بازبینی DeepSeek\n":"✓ بازبینی DeepSeek\n")+(finalText.equals(reviewed)?"⚠ بدون تأیید OpenAI\n\n":"✓ تأیید نهایی OpenAI\n\n");
+            String reviewed=reviewWithDeepSeek(request,answer);if(reviewed.equals(answer))throw new Exception("بازبینی DeepSeek انجام نشد.");String finalText=reviewWithOpenAI(request,reviewed);if(finalText.equals(reviewed))throw new Exception("بازبینی OpenAI انجام نشد.");
+            String label="تحلیل سند: "+name+"\n✓ استخراج Gemini\n✓ بازبینی DeepSeek\n✓ تأیید نهایی OpenAI\n\n";
             String result=label+finalText;
             runOnUiThread(()->{aiLog.setText(result);add("analyses",result);refresh();message("تحلیل سند ذخیره شد.");});
         }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("تحلیل سند انجام نشد: "+err+"\nنوع فایل، حجم، اینترنت، کلید و سهمیه API را بررسی کنید."));}}).start();
@@ -161,28 +163,33 @@ public class LegalCaseActivity extends AppCompatActivity {
     }
 
     private void askAi(){
-        String question=aiInput.getText().toString().trim();if(question.isEmpty())return;
-        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
-        if(key.isEmpty()){configureAi();return;}
-        new AlertDialog.Builder(this).setTitle("تأیید ارسال").setMessage("فقط متن همین سؤال برای تحلیل به Gemini ارسال شود؟")
-                .setNegativeButton("خیر",null).setPositiveButton("بله، ارسال شود",(d,w)->sendQuestion(question,key)).show();
+        String question=aiInput.getText().toString().trim();if(question.isEmpty()){message("ابتدا موضوع یا دستور متن را بنویسید.");return;}
+        SharedPreferences p=getSharedPreferences("mose_private_settings",MODE_PRIVATE);
+        String deep=p.getString("deepseek_key",""),open=p.getString("openai_key","");
+        if(deep.isEmpty()||open.isEmpty()){message("برای نوشتن هوشمند، اتصال DeepSeek و OpenAI الزامی است. دکمه اتصال الزامی را بزنید.");configureReviewers();return;}
+        new AlertDialog.Builder(this).setTitle("تأیید تولید متن").setMessage("DeepSeek متن را بنویسد و سپس OpenAI آن را بازبینی نهایی کند؟")
+                .setNegativeButton("خیر",null).setPositiveButton("بله، شروع شود",(d,w)->sendQuestion(question)).show();
     }
-    private void sendQuestion(String question,String key){
-        aiInput.setText("");aiLog.setText("در حال بررسی حقوقی…");
+    private void sendQuestion(String question){
+        aiInput.setText("");aiLog.setText("DeepSeek در حال نوشتن متن حقوقی است…");
         new Thread(()->{try{
-            URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key="+key);
-            HttpURLConnection con=(HttpURLConnection)url.openConnection();con.setRequestMethod("POST");con.setDoOutput(true);con.setConnectTimeout(20000);con.setReadTimeout(60000);con.setRequestProperty("Content-Type","application/json; charset=UTF-8");
-            String prompt="شما دستیار حقوقی فارسی‌زبان آشنا با حقوق ایران هستید. پاسخ رسمی، دقیق و ساختاریافته بدهید. مواد قانونی را فقط در صورت اطمینان ذکر و موارد نامطمئن را مشخص کنید. این پاسخ جایگزین بررسی وکیل دارای پروانه نیست. درخواست: "+question;
-            JSONObject body=new JSONObject();JSONArray contents=new JSONArray();JSONObject one=new JSONObject();JSONArray parts=new JSONArray();parts.put(new JSONObject().put("text",prompt));one.put("parts",parts);contents.put(one);body.put("contents",contents);
-            try(OutputStream os=con.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
-            int code=con.getResponseCode();BufferedReader br=new BufferedReader(new InputStreamReader(code<400?con.getInputStream():con.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String line;while((line=br.readLine())!=null)raw.append(line);
-            if(code>=400)throw new Exception("خطای Gemini "+code+": "+raw.substring(0,Math.min(300,raw.length())));JSONObject response=new JSONObject(raw.toString());String answer=response.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
-            String reviewed=reviewWithDeepSeek(question,answer);
-            String finalText=reviewWithOpenAI(question,reviewed);
-            String label=(reviewed.equals(answer)?"⚠ بدون بازبینی DeepSeek\n":"✓ بازبینی DeepSeek\n")+(finalText.equals(reviewed)?"⚠ بدون تأیید OpenAI\n\n":"✓ تأیید نهایی OpenAI\n\n");
-            String result=label+finalText;
-            runOnUiThread(()->{aiLog.setText(result);add("drafts",result);refresh();});
-        }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("اتصال انجام نشد. "+err+"\nکلید، اینترنت و سهمیه API را بررسی کنید."));}}).start();
+            String draft=writeWithDeepSeek(question);
+            runOnUiThread(()->aiLog.setText("متن اولیه نوشته شد؛ OpenAI در حال بازبینی نهایی است…"));
+            String finalText=reviewWithOpenAI(question,draft);
+            if(finalText.equals(draft))throw new Exception("بازبینی OpenAI انجام نشد؛ کلید یا اعتبار API را بررسی کنید.");
+            String result="✓ نگارش اولیه DeepSeek\n✓ بازبینی نهایی OpenAI\n\n"+finalText;
+            runOnUiThread(()->{aiLog.setText(result);add("drafts",result);refresh();message("متن نهایی نوشته و در پرونده ذخیره شد.");});
+        }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("تولید متن انجام نشد: "+err));}}).start();
+    }
+    private String writeWithDeepSeek(String question) throws Exception{
+        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("deepseek_key","");
+        URL u=new URL("https://api.deepseek.com/chat/completions");HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(20000);c.setReadTimeout(90000);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer "+key);
+        String prompt="به عنوان نویسنده حرفه‌ای متون حقوقی ایران، درخواست زیر را دقیق، رسمی، راست‌چین‌پذیر و قابل ویرایش تنظیم کن. هیچ واقعه، شماره، تاریخ، نام یا ماده قانونی را حدس نزن؛ جای اطلاعات ناقص را با [تکمیل شود] مشخص کن. ارکان دعوا، خواسته، ادله، دفاعیات و نتیجه‌گیری را متناسب با نوع متن کامل کن. درخواست: "+question;
+        JSONObject body=new JSONObject().put("model","deepseek-chat").put("messages",new JSONArray().put(new JSONObject().put("role","user").put("content",prompt)));
+        try(OutputStream os=c.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+        int code=c.getResponseCode();BufferedReader b=new BufferedReader(new InputStreamReader(code<400?c.getInputStream():c.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String l;while((l=b.readLine())!=null)raw.append(l);
+        if(code>=400)throw new Exception("خطای DeepSeek "+code+": "+raw.substring(0,Math.min(250,raw.length())));
+        return new JSONObject(raw.toString()).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
     }
 
     private String reviewWithDeepSeek(String question,String draft){
@@ -227,8 +234,8 @@ public class LegalCaseActivity extends AppCompatActivity {
         }
         String draft="پیش‌نویس "+type+"\n\n"+body+"\n\n⚠ این نسخه محلی است و هنوز تأیید چندمدلی نشده است.";
         add("drafts",draft);refresh();
-        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
-        if(key.isEmpty()){message(draft+"\n\nبرای تکمیل هوشمند، ابتدا کلید Gemini را در تنظیمات وارد کنید.");return;}
+        SharedPreferences ai=getSharedPreferences("mose_private_settings",MODE_PRIVATE);String dk=ai.getString("deepseek_key",""),ok=ai.getString("openai_key","");
+        if(dk.isEmpty()||ok.isEmpty()){message(draft+"\n\nنسخه اولیه ذخیره شد. برای تکمیل هوشمند، اتصال الزامی DeepSeek و OpenAI را ثبت کنید.");return;}
         new AlertDialog.Builder(this).setTitle("پیش‌نویس ذخیره شد").setMessage("نسخه اولیه نوشته و ذخیره شد. برای تکمیل حرفه‌ای و بازبینی چندمدلی ارسال شود؟")
                 .setNegativeButton("فعلاً نه",(d,w)->message(draft)).setPositiveButton("تکمیل هوشمند",(d,w)->{
                     aiInput.setText("یک "+type+" حرفه‌ای و قابل ویرایش بر اساس حقوق ایران تنظیم کن. موضوع و اطلاعات: "+facts+"\nپیش‌نویس محلی: "+draft);askAi();
