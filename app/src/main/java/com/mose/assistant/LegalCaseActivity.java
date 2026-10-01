@@ -22,10 +22,19 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class LegalCaseActivity extends AppCompatActivity {
-    private static final int NAVY=Color.rgb(5,17,32),CARD=Color.rgb(16,35,55),GOLD=Color.rgb(232,190,92),CYAN=Color.rgb(42,222,193);
+    private static final int NAVY=Color.rgb(37,20,15),CARD=Color.rgb(63,37,27),GOLD=Color.rgb(224,166,82),CYAN=Color.rgb(239,199,132);
     private SharedPreferences store; private String caseId,caseName; private LinearLayout timeline;
+    private EditText aiInput; private TextView aiLog;
     private final ActivityResultLauncher<String[]> picker=registerForActivityResult(new ActivityResultContracts.OpenDocument(),uri->{
         if(uri==null)return;
         try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}
@@ -45,6 +54,15 @@ public class LegalCaseActivity extends AppCompatActivity {
         TextView title=text("⚖ "+caseName,24,GOLD,Typeface.BOLD);title.setGravity(Gravity.RIGHT);root.addView(title);
         TextView sub=text("میز خصوصی پرونده — اسناد این پرونده از سایر پرونده‌ها جداست.",12,Color.rgb(148,173,188),Typeface.NORMAL);sub.setGravity(Gravity.RIGHT);sub.setPadding(0,dp(8),0,dp(14));root.addView(sub);
 
+        LinearLayout aiCard=new LinearLayout(this);aiCard.setOrientation(LinearLayout.VERTICAL);aiCard.setPadding(dp(16),dp(15),dp(16),dp(15));aiCard.setBackground(round(Color.rgb(78,45,31),20));
+        TextView aiTitle=text("✦ وکیل هوشمند",19,GOLD,Typeface.BOLD);aiTitle.setGravity(Gravity.RIGHT);aiCard.addView(aiTitle);
+        aiLog=text("سلطان، سؤال حقوقی یا دستور تنظیم متن را بفرمایید.",14,Color.rgb(247,231,207),Typeface.NORMAL);aiLog.setGravity(Gravity.RIGHT);aiLog.setPadding(0,dp(10),0,dp(10));aiCard.addView(aiLog);
+        aiInput=new EditText(this);aiInput.setHint("سؤال یا دستور شما؛ فقط همین متن ارسال می‌شود");aiInput.setTextColor(Color.WHITE);aiInput.setHintTextColor(Color.rgb(177,150,130));aiInput.setTextDirection(View.TEXT_DIRECTION_RTL);aiInput.setMinLines(2);aiCard.addView(aiInput,params(-1,-2,4,8));
+        LinearLayout aiButtons=new LinearLayout(this);aiButtons.setOrientation(LinearLayout.HORIZONTAL);
+        Button settings=button("تنظیم کلید AI");settings.setOnClickListener(v->configureAi());aiButtons.addView(settings,new LinearLayout.LayoutParams(0,dp(50),1));
+        Button send=button("ارسال سؤال");send.setOnClickListener(v->askAi());LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(50),1);sp.setMargins(dp(8),0,0,0);aiButtons.addView(send,sp);
+        aiCard.addView(aiButtons);root.addView(aiCard,params(-1,-2,4,14));
+
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
         root.addView(action("✍ ثبت یادداشت و اقدام","جلسه، تماس، مهلت یا اقدام بعدی",v->input("یادداشت پرونده","متن یادداشت",x->{add("notes",x);refresh();})));
         root.addView(action("⚖ تنظیم متن حقوقی","لایحه، دادخواست، اظهارنامه یا شکواییه",v->chooseDraft()));
@@ -55,6 +73,32 @@ public class LegalCaseActivity extends AppCompatActivity {
         timeline=new LinearLayout(this);timeline.setOrientation(LinearLayout.VERTICAL);root.addView(timeline);refresh();
 
         Button back=button("بازگشت به فهرست پرونده‌ها");back.setOnClickListener(v->finish());root.addView(back,params(-1,dp(54),20,0));setContentView(scroll);
+    }
+
+    private void configureAi(){
+        EditText input=new EditText(this);input.setHint("کلید Gemini API");input.setSingleLine(true);
+        new AlertDialog.Builder(this).setTitle("اتصال هوش مصنوعی").setMessage("کلید در فضای خصوصی برنامه ذخیره می‌شود. فقط متن‌هایی که خودتان ارسال می‌کنید به Gemini می‌روند.")
+                .setView(input).setNegativeButton("انصراف",null).setPositiveButton("ذخیره",(d,w)->{String key=input.getText().toString().trim();if(!key.isEmpty()){getSharedPreferences("mose_private_settings",MODE_PRIVATE).edit().putString("gemini_key",key).apply();message("کلید ذخیره شد.");}}).show();
+    }
+    private void askAi(){
+        String question=aiInput.getText().toString().trim();if(question.isEmpty())return;
+        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
+        if(key.isEmpty()){configureAi();return;}
+        new AlertDialog.Builder(this).setTitle("تأیید ارسال").setMessage("فقط متن همین سؤال برای تحلیل به Gemini ارسال شود؟")
+                .setNegativeButton("خیر",null).setPositiveButton("بله، ارسال شود",(d,w)->sendQuestion(question,key)).show();
+    }
+    private void sendQuestion(String question,String key){
+        aiInput.setText("");aiLog.setText("در حال بررسی حقوقی…");
+        new Thread(()->{try{
+            URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key="+key);
+            HttpURLConnection con=(HttpURLConnection)url.openConnection();con.setRequestMethod("POST");con.setDoOutput(true);con.setConnectTimeout(20000);con.setReadTimeout(60000);con.setRequestProperty("Content-Type","application/json; charset=UTF-8");
+            String prompt="شما دستیار حقوقی فارسی‌زبان آشنا با حقوق ایران هستید. پاسخ رسمی، دقیق و ساختاریافته بدهید. مواد قانونی را فقط در صورت اطمینان ذکر و موارد نامطمئن را مشخص کنید. این پاسخ جایگزین بررسی وکیل دارای پروانه نیست. درخواست: "+question;
+            JSONObject body=new JSONObject();JSONArray contents=new JSONArray();JSONObject one=new JSONObject();JSONArray parts=new JSONArray();parts.put(new JSONObject().put("text",prompt));one.put("parts",parts);contents.put(one);body.put("contents",contents);
+            try(OutputStream os=con.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+            int code=con.getResponseCode();BufferedReader br=new BufferedReader(new InputStreamReader(code<400?con.getInputStream():con.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String line;while((line=br.readLine())!=null)raw.append(line);
+            if(code>=400)throw new Exception();JSONObject response=new JSONObject(raw.toString());String answer=response.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
+            runOnUiThread(()->{aiLog.setText(answer);add("drafts",answer);refresh();});
+        }catch(Exception e){runOnUiThread(()->aiLog.setText("اتصال انجام نشد؛ کلید، اینترنت یا سهمیه رایگان را بررسی کنید."));}}).start();
     }
 
     private void chooseDraft(){
