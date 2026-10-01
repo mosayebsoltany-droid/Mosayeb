@@ -24,8 +24,8 @@ import java.util.Set;
 import java.util.UUID;
 
 public class LawyerActivity extends AppCompatActivity {
-    private static final int NAVY=Color.rgb(5,17,32), CARD=Color.rgb(16,35,55);
-    private static final int GOLD=Color.rgb(232,190,92), CYAN=Color.rgb(42,222,193);
+    private static final int NAVY=Color.rgb(37,20,15), CARD=Color.rgb(63,37,27);
+    private static final int GOLD=Color.rgb(224,166,82), CYAN=Color.rgb(239,199,132);
     private SharedPreferences store;
     private LinearLayout caseList;
     private TextToSpeech speaker;
