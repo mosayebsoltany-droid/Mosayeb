@@ -121,6 +121,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         String q=aiInput.getText().toString().trim();
         if(q.isEmpty()){message("فقط دستور خود را بنویسید؛ مثال: یک دادخواست مطالبه خسارت برایم بنویس.");return;}
         if(q.contains("مهریه")){showMahriyehInterview(q);return;}
+        if(q.contains("انجام تعهد")||q.contains("نقض قرارداد")||q.contains("خسارت قراردادی")||q.contains("مطالبه خسارت")||q.contains("قرارداد باریت")){showContractClaimInterview(q);return;}
         String type=detectDocumentType(q);
         String authority=blankForDraft(store.getString("profile_authority",""),"[مرجع رسیدگی تکمیل شود]");
         String parties=blankForDraft(store.getString("profile_parties",""),"[مشخصات و سمت طرفین تکمیل شود]");
@@ -133,6 +134,41 @@ public class LegalCaseActivity extends AppCompatActivity {
         aiInput.setText("");
         createProfessionalDraft(type,authority,parties,subject,facts,evidence,request);
     }
+    private void showContractClaimInterview(String instruction){
+        ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),dp(4),dp(14),dp(12));box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);scroll.addView(box);
+        EditText claimant=field("خواهان/متعهدله: نام، شناسه ملی یا کد ملی و سمت",2);
+        EditText defendant=field("خوانده/متعهد: نام، شناسه ملی یا کد ملی و نشانی",2);
+        EditText contract=field("شماره، تاریخ، موضوع قرارداد و طرفین",3);
+        EditText obligation=field("تعهد دقیق خوانده: تحویل چه مال، پرداخت چه مبلغ یا انجام چه کار؟",3);
+        EditText deadline=field("موعد اجرای تعهد و محل اجرای آن",2);
+        EditText breach=field("نقض قرارداد دقیقاً چگونه و در چه تاریخی رخ داده است؟",4);
+        EditText performance=field("تعهدات انجام‌شده از طرف شما و اسناد اثبات آن",3);
+        EditText demand=field("اظهارنامه، مطالبه یا اخطار قبلی و تاریخ ابلاغ",2);
+        EditText loss=field("نوع و مبلغ خسارت؛ وجه التزام قراردادی یا خسارت واقعی",3);
+        EditText arbitration=field("آیا قرارداد شرط داوری یا مرجع اختصاصی دارد؟ متن آن",2);
+        EditText evidence=field("دلایل: قرارداد، الحاقیه، فاکتور، نامه، پیام، رسید، باسکول، آزمایش، شاهد و...",4);
+        EditText provisional=field("تأمین خواسته یا دستور موقت لازم است؟ موضوع و فوریت",3);
+        box.addView(claimant);box.addView(defendant);box.addView(contract);box.addView(obligation);box.addView(deadline);box.addView(breach);box.addView(performance);box.addView(demand);box.addView(loss);box.addView(arbitration);box.addView(evidence);box.addView(provisional);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("مصاحبه دعوای قراردادی و خسارت").setView(scroll).setNegativeButton("انصراف",null).setPositiveButton("ساخت دادخواست",null).create();
+        dialog.setOnShowListener(x->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String cl=claimant.getText().toString().trim(),de=defendant.getText().toString().trim(),co=contract.getText().toString().trim(),ob=obligation.getText().toString().trim(),br=breach.getText().toString().trim();
+            if(cl.isEmpty()||de.isEmpty()||co.isEmpty()||ob.isEmpty()||br.isEmpty()){message("مشخصات طرفین، قرارداد، تعهد و نحوه نقض آن الزامی است.");return;}
+            createContractClaimDraft(cl,de,co,ob,deadline.getText().toString().trim(),br,performance.getText().toString().trim(),demand.getText().toString().trim(),loss.getText().toString().trim(),arbitration.getText().toString().trim(),evidence.getText().toString().trim(),provisional.getText().toString().trim());
+            dialog.dismiss();
+        }));dialog.show();
+    }
+    private void createContractClaimDraft(String claimant,String defendant,String contract,String obligation,String deadline,String breach,String performance,String priorDemand,String loss,String arbitration,String evidence,String provisional){
+        boolean hasArbitration=!arbitration.isEmpty()&&!arbitration.contains("ندارد");
+        String authority=store.getString("profile_authority","").trim();
+        if(authority.isEmpty())authority=hasArbitration?"[مرجع داوری مقرر در قرارداد پس از بررسی اعتبار و دامنه شرط]":"[دادگاه عمومی حقوقی صالح پس از بررسی صلاحیت محلی]";
+        String claim="۱. الزام خوانده به اجرای کامل تعهد قراردادی: "+obligation+"\n"+
+                "۲. محکومیت خوانده به جبران خسارات اثبات‌شده ناشی از عدم اجرا یا تأخیر در اجرا: "+blankForDraft(loss,"[نوع، مبنا و مبلغ خسارت تکمیل و اثبات شود]")+"\n"+
+                "۳. پرداخت هزینه دادرسی، کارشناسی و سایر هزینه‌های قانونی قابل مطالبه پس از احراز";
+        if(!provisional.isEmpty())claim+="\n۴. رسیدگی جداگانه به درخواست اقدام فوری: "+provisional;
+        String draft="دادخواست الزام به انجام تعهد و مطالبه خسارت قراردادی — نسخه قابل ویرایش\n\nبسمه‌تعالی\n\nریاست محترم "+authority+"\n\nخواهان: "+claimant+"\nخوانده: "+defendant+"\n\nخواسته و بهای خواسته:\n"+claim+"\nبهای خواسته: [بر اساس ارزش تعهد و مبلغ خسارت تکمیل شود]\n\nدلایل و منضمات:\n۱. قرارداد و پیوست‌های آن: "+contract+"\n۲. اسناد اجرای تعهدات خواهان: "+blankForDraft(performance,"[تکمیل شود]")+"\n۳. اخطار یا مطالبه قبلی: "+blankForDraft(priorDemand,"[در صورت وجود تکمیل شود]")+"\n۴. سایر ادله: "+blankForDraft(evidence,"[فهرست و شماره‌گذاری شود]")+"\n۵. عنداللزوم ارجاع امر به کارشناسی و استعلام از مراجع مرتبط\n\nشرح دادخواست\nبا سلام و احترام،\nبه موجب "+contract+"، رابطه قراردادی میان طرفین ایجاد شده و خوانده متعهد گردیده است: "+obligation+"\n\nموعد و محل اجرای تعهد: "+blankForDraft(deadline,"[تکمیل شود]")+"\n\nخواهان تعهدات خود را حسب اسناد زیر انجام داده یا آمادگی اجرای آن را داشته است:\n"+blankForDraft(performance,"[اقدامات و اسناد انجام تعهد خواهان تکمیل شود]")+"\n\nبا این حال، خوانده تعهد قراردادی خود را به شرح زیر نقض کرده است:\n"+breach+"\n\nمطالبه و اخطار قبلی:\n"+blankForDraft(priorDemand,"[تاریخ و نحوه مطالبه تکمیل شود]")+"\n\nخسارات ادعایی و مبنای محاسبه:\n"+blankForDraft(loss,"[هر خسارت باید از حیث وقوع، مبلغ، رابطه سببیت و مبنای قراردادی یا قانونی اثبات شود]")+"\n\nوضعیت شرط داوری یا مرجع حل اختلاف:\n"+blankForDraft(arbitration,"شرطی اعلام نشده است؛ متن کامل قرارداد باید مجدداً کنترل شود.")+"\n\nبا توجه به اعتبار تعهدات قراردادی، لزوم اجرای مفاد توافق و مسئولیت ناشی از نقض اثبات‌شده تعهد، رسیدگی و صدور تصمیم نسبت به خواسته‌های فوق تقاضا می‌شود.\n\nنام و سمت نماینده خواهان: "+claimant+"\nتاریخ و امضا: [تکمیل شود]\n\nکنترل نهایی پیش از ثبت:\n• اصالت و امضای قرارداد و اختیار امضاکنندگان\n• شرط داوری و مرجع صالح\n• سررسید تعهد و اثبات مطالبه\n• انجام تعهدات متقابل خواهان\n• مبلغ و شیوه محاسبه خسارت و رابطه سببیت\n• نشانی دقیق طرفین، بهای خواسته و پیوست‌های مصدق\n\nهشدار: شماره ماده یا رأی قضایی بدون اتصال به منبع رسمی به این متن افزوده نشده است.";
+        add("drafts",draft);aiLog.setText(draft);refresh();showOutputActions(draft);
+    }
+
     private void showMahriyehInterview(String instruction){
         ScrollView scroll=new ScrollView(this);
         LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),dp(4),dp(14),dp(12));box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);scroll.addView(box);
