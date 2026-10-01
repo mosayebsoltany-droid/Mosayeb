@@ -1,6 +1,7 @@
 package com.mose.assistant;
 
 import android.Manifest;
+import androidx.appcompat.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -225,7 +226,7 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
         String t=raw.trim().toLowerCase(new Locale("fa","IR"));
         liveText.setText(raw); addBubble("سلطان", raw, true);
         if(t.contains("hi mose")||t.contains("های موز")||t.equals("موز")) { reply("چشم سلطان، گوش می‌دهم."); return; }
-        if(t.contains("وکیل") && t.contains("باریت")) { reply("چشم سلطان. بخش وکیل Mose آماده است؛ اتصال اسناد پرونده باریت مرحله بعد فعال می‌شود."); return; }
+        if(t.contains("وکیل")) { showLawyerModule(); return; }
         if(t.contains("حسابدار")) { reply("چشم سلطان. حسابدار Mose آماده ثبت هزینه، بدهی و گزارش مالی است."); return; }
         if(t.contains("منشی")) { reply("چشم سلطان. منشی Mose آماده تماس، پیام و برنامه‌ریزی است."); return; }
         if(t.contains("کارمند")) { reply("چشم سلطان. کارمند Mose آماده پیگیری مأموریت است."); return; }
@@ -272,6 +273,31 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     private String phone(String t) {
         String n=t.replace('۰','0').replace('۱','1').replace('۲','2').replace('۳','3').replace('۴','4').replace('۵','5').replace('۶','6').replace('۷','7').replace('۸','8').replace('۹','9').replaceAll("[^0-9+]","");
         Matcher m=Pattern.compile("(?:\\+98|0098|0)?9\\d{9}").matcher(n); return m.find()?m.group():null;
+    }
+
+    private void showLawyerModule() {
+        liveText.setText("وکیل Mose");
+        addBubble("Mose", "چشم سلطان؛ میز وکیل باز شد.", false);
+        say("Vakil Mose baz shod, Soltan.");
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("⚖ وکیل Mose")
+                .setMessage("میز خصوصی پرونده‌ها\n\nاز این بخش می‌توانید یک سند را از حافظه گوشی انتخاب کنید. اطلاعات پرونده در کد عمومی برنامه ذخیره نمی‌شود.")
+                .setNegativeButton("بستن", null)
+                .setPositiveButton("انتخاب سند", (d, w) -> {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.setType("*/*");
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    try { startActivity(pick); }
+                    catch(Exception e) { reply("سلطان، فایل‌منیجر گوشی باز نشد."); }
+                }).create();
+        dialog.setOnShowListener(x -> {
+            TextView message = dialog.findViewById(android.R.id.message);
+            if(message != null) {
+                message.setTextDirection(View.TEXT_DIRECTION_RTL);
+                message.setGravity(Gravity.RIGHT);
+            }
+        });
+        dialog.show();
     }
 
     private String contactNameFrom(String t) {
