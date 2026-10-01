@@ -7,9 +7,11 @@ import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.provider.ContactsContract;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -237,6 +239,14 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
         String n=phone(t);
         if(n!=null&&(t.contains("تماس")||t.contains("زنگ"))) { launch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"+n)),"شماره‌گیر"); return; }
         if(n!=null&&(t.contains("پیام")||t.contains("اس ام اس"))) { launch(new Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:"+n)),"پیامک"); return; }
+        if(t.contains("تماس")||t.contains("زنگ")) {
+            String contactName = contactNameFrom(t);
+            if(contactName.isEmpty()) { reply("نام مخاطب را بفرمایید سلطان."); return; }
+            String contactPhone = findContactPhone(contactName);
+            if(contactPhone==null) reply("سلطان، مخاطب "+contactName+" پیدا نشد.");
+            else launch(new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"+contactPhone)),"شماره‌گیر برای "+contactName);
+            return;
+        }
         reply("چشم سلطان. فرمان ثبت شد؛ برای اجرای هوشمند این دستور، هسته هوش مصنوعی را در مرحله بعد متصل می‌کنم.");
     }
 
@@ -262,6 +272,29 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     private String phone(String t) {
         String n=t.replace('۰','0').replace('۱','1').replace('۲','2').replace('۳','3').replace('۴','4').replace('۵','5').replace('۶','6').replace('۷','7').replace('۸','8').replace('۹','9').replaceAll("[^0-9+]","");
         Matcher m=Pattern.compile("(?:\\+98|0098|0)?9\\d{9}").matcher(n); return m.find()?m.group():null;
+    }
+
+    private String contactNameFrom(String t) {
+        return t.replace("تماس بگیر","").replace("تماس","")
+                .replace("زنگ بزن","").replace("زنگ","")
+                .replace("با ","").replace("به ","").replace("رو ","")
+                .replace("را ","").trim();
+    }
+
+    private String findContactPhone(String name) {
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+            permissions.launch(new String[]{Manifest.permission.READ_CONTACTS});
+            reply("سلطان، ابتدا اجازه مخاطبین را فعال کنید و دوباره فرمان بدهید.");
+            return null;
+        }
+        String[] projection = {ContactsContract.CommonDataKinds.Phone.NUMBER};
+        String selection = ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ?";
+        try(Cursor cursor = getContentResolver().query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                projection, selection, new String[]{"%"+name+"%"}, null)) {
+            if(cursor!=null && cursor.moveToFirst()) return cursor.getString(0);
+        } catch(Exception ignored) {}
+        return null;
     }
 
     private void addBubble(String who,String message,boolean user) {
