@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HiMose" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#19D3AE</item>
+        <item name="colorPrimaryVariant">#0A8F78</item>
+        <item name="colorOnPrimary">#06231E</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#071B2A</item>
+        <item name="android:navigationBarColor">#071B2A</item>
+    </style>
+</resources>
