@@ -7,6 +7,9 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.util.Base64;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -27,6 +30,8 @@ import java.net.URL;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -38,7 +43,9 @@ public class LegalCaseActivity extends AppCompatActivity {
     private final ActivityResultLauncher<String[]> picker=registerForActivityResult(new ActivityResultContracts.OpenDocument(),uri->{
         if(uri==null)return;
         try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}
-        add("docs",uri.toString());refresh();message("سند در پرونده «"+caseName+"» ذخیره شد.");
+        add("docs",uri.toString());refresh();
+        new AlertDialog.Builder(this).setTitle("سند ذخیره شد").setMessage("سند در پرونده «"+caseName+"» ذخیره شد. اکنون برای تحلیل حقوقی ارسال شود؟")
+                .setNegativeButton("فعلاً نه",null).setPositiveButton("تحلیل شود",(d,w)->confirmDocumentAnalysis(uri)).show();
     });
 
     @Override protected void onCreate(Bundle b){
@@ -68,7 +75,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
         root.addView(action("✍ ثبت یادداشت و اقدام","جلسه، تماس، مهلت یا اقدام بعدی",v->input("یادداشت پرونده","متن یادداشت",x->{add("notes",x);refresh();})));
         root.addView(action("⚖ تنظیم متن حقوقی","لایحه، دادخواست، اظهارنامه یا شکواییه",v->chooseDraft()));
-        root.addView(action("🔎 تحلیل خصوصی اسناد","مرحله بعد: استخراج متن و بررسی آفلاین PDF",v->message("اسناد این پرونده محفوظ‌اند. موتور تحلیل آفلاین PDF در مرحله بعد روی گوشی اضافه می‌شود.")));
+        root.addView(action("🔎 تحلیل هوشمند PDF","انتخاب سند، استخراج نکات و راستی‌آزمایی چندمدلی",v->chooseDocumentForAnalysis()));
         root.addView(action("⌕ جست‌وجوی داخل پرونده","جست‌وجو در یادداشت‌ها و پیش‌نویس‌ها",v->input("جست‌وجو","عبارت موردنظر",this::search)));
 
         TextView h=text("محتوای پرونده",18,Color.WHITE,Typeface.BOLD);h.setGravity(Gravity.RIGHT);h.setPadding(0,dp(20),0,dp(8));root.addView(h);
@@ -95,6 +102,62 @@ public class LegalCaseActivity extends AppCompatActivity {
                     if(!open.getText().toString().trim().isEmpty())e.putString("openai_key",open.getText().toString().trim());
                     e.apply();message("تنظیمات بازبین‌ها ذخیره شد.");
                 }).show();
+    }
+
+    private void chooseDocumentForAnalysis(){
+        Set<String> docs=get("docs");
+        if(docs.isEmpty()){message("ابتدا یک فایل PDF یا تصویر به پرونده اضافه کنید.");return;}
+        String[] uris=docs.toArray(new String[0]);String[] names=new String[uris.length];
+        for(int i=0;i<uris.length;i++)names[i]=(i+1)+" — "+getDisplayName(Uri.parse(uris[i]));
+        new AlertDialog.Builder(this).setTitle("انتخاب سند برای تحلیل").setItems(names,(d,which)->confirmDocumentAnalysis(Uri.parse(uris[which]))).show();
+    }
+    private void confirmDocumentAnalysis(Uri uri){
+        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
+        if(key.isEmpty()){configureAi();return;}
+        String name=getDisplayName(uri);long size=getDocumentSize(uri);
+        if(size>10L*1024L*1024L){message("حجم این فایل بیشتر از ۱۰ مگابایت است. برای حفظ پایداری، فایل را کم‌حجم یا به چند بخش تقسیم کنید.");return;}
+        String sizeText=size>0?String.format(java.util.Locale.US,"%.1f مگابایت",size/1048576.0):"نامشخص";
+        new AlertDialog.Builder(this).setTitle("اجازه تحلیل سند")
+                .setMessage("فایل: "+name+"\nحجم: "+sizeText+"\n\nاصل فایل برای استخراج و تحلیل به Gemini ارسال می‌شود. سپس متن تحلیل برای راستی‌آزمایی به DeepSeek و OpenAI فرستاده می‌شود. آیا تأیید می‌کنید؟")
+                .setNegativeButton("خیر",null).setPositiveButton("تأیید و تحلیل",(d,w)->analyzeDocument(uri,key,name)).show();
+    }
+    private void analyzeDocument(Uri uri,String key,String name){
+        aiLog.setText("در حال خواندن و تحلیل سند «"+name+"»…");
+        new Thread(()->{try{
+            byte[] bytes=readDocument(uri,10L*1024L*1024L);
+            String mime=getContentResolver().getType(uri);if(mime==null)mime="application/pdf";
+            URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key="+key);
+            HttpURLConnection con=(HttpURLConnection)url.openConnection();con.setRequestMethod("POST");con.setDoOutput(true);con.setConnectTimeout(30000);con.setReadTimeout(120000);con.setRequestProperty("Content-Type","application/json; charset=UTF-8");
+            String prompt="این سند متعلق به پرونده «"+caseName+"» است. سند را به فارسی و با رویکرد حقوق ایران تحلیل کن. خروجی شامل: ۱) نوع و خلاصه سند، ۲) طرفین و سمت‌ها، ۳) تاریخ‌ها، شماره‌ها، مبالغ و تعهدات، ۴) ادعاها و ادله، ۵) تعارض‌ها و ابهام‌ها، ۶) نقاط قوت و ضعف اثباتی، ۷) مدارک مفقود، ۸) اقدامات و مهلت‌های پیشنهادی، ۹) هشدار درباره مواد قانونی نامطمئن باشد. هیچ متن ناخوانا یا ماده قانونی را حدس نزن و برای هر مورد نامطمئن صریحاً بنویس نیازمند بررسی است.";
+            JSONArray parts=new JSONArray().put(new JSONObject().put("text",prompt))
+                    .put(new JSONObject().put("inline_data",new JSONObject().put("mime_type",mime).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP))));
+            JSONObject body=new JSONObject().put("contents",new JSONArray().put(new JSONObject().put("parts",parts)));
+            try(OutputStream os=con.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
+            int code=con.getResponseCode();BufferedReader br=new BufferedReader(new InputStreamReader(code<400?con.getInputStream():con.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String line;while((line=br.readLine())!=null)raw.append(line);
+            if(code>=400)throw new Exception("Gemini "+code);
+            String answer=new JSONObject(raw.toString()).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
+            String request="راستی‌آزمایی تحلیل حقوقی سند «"+name+"» در پرونده «"+caseName+"»";
+            String reviewed=reviewWithDeepSeek(request,answer);String finalText=reviewWithOpenAI(request,reviewed);
+            String label="تحلیل سند: "+name+"\n"+(reviewed.equals(answer)?"⚠ بدون بازبینی DeepSeek\n":"✓ بازبینی DeepSeek\n")+(finalText.equals(reviewed)?"⚠ بدون تأیید OpenAI\n\n":"✓ تأیید نهایی OpenAI\n\n");
+            String result=label+finalText;
+            runOnUiThread(()->{aiLog.setText(result);add("analyses",result);refresh();message("تحلیل سند ذخیره شد.");});
+        }catch(Exception e){runOnUiThread(()->aiLog.setText("تحلیل سند انجام نشد. نوع فایل، حجم، اینترنت، کلید یا سهمیه API را بررسی کنید."));}}).start();
+    }
+    private byte[] readDocument(Uri uri,long max) throws Exception{
+        try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
+            if(in==null)throw new Exception("file");byte[] buf=new byte[8192];int n;long total=0;
+            while((n=in.read(buf))!=-1){total+=n;if(total>max)throw new Exception("large");out.write(buf,0,n);}return out.toByteArray();
+        }
+    }
+    private String getDisplayName(Uri uri){
+        try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){
+            if(c!=null&&c.moveToFirst())return c.getString(0);
+        }catch(Exception ignored){}String x=uri.getLastPathSegment();return x==null?"سند":x;
+    }
+    private long getDocumentSize(Uri uri){
+        try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.SIZE},null,null,null)){
+            if(c!=null&&c.moveToFirst()&&!c.isNull(0))return c.getLong(0);
+        }catch(Exception ignored){}return -1;
     }
 
     private void askAi(){
@@ -161,15 +224,17 @@ public class LegalCaseActivity extends AppCompatActivity {
         StringBuilder out=new StringBuilder();
         for(String x:get("notes"))if(x.contains(q))out.append("یادداشت: ").append(x).append("\n\n");
         for(String x:get("drafts"))if(x.contains(q))out.append("پیش‌نویس: ").append(x).append("\n\n");
+        for(String x:get("analyses"))if(x.contains(q))out.append("تحلیل سند: ").append(x).append("\n\n");
         message(out.length()==0?"نتیجه‌ای پیدا نشد.":out.toString());
     }
     private void refresh(){
         if(timeline==null)return;timeline.removeAllViews();
-        Set<String> docs=get("docs"),notes=get("notes"),drafts=get("drafts");
-        if(docs.isEmpty()&&notes.isEmpty()&&drafts.isEmpty()){TextView e=text("هنوز سند یا یادداشتی در این پرونده نیست.",14,Color.rgb(155,178,191),Typeface.NORMAL);e.setGravity(Gravity.RIGHT);timeline.addView(e);return;}
+        Set<String> docs=get("docs"),notes=get("notes"),drafts=get("drafts"),analyses=get("analyses");
+        if(docs.isEmpty()&&notes.isEmpty()&&drafts.isEmpty()&&analyses.isEmpty()){TextView e=text("هنوز سند یا یادداشتی در این پرونده نیست.",14,Color.rgb(155,178,191),Typeface.NORMAL);e.setGravity(Gravity.RIGHT);timeline.addView(e);return;}
         for(String x:docs)addRow("📎 سند","PDF یا تصویر ذخیره‌شده",v->openUri(x));
         for(String x:notes)addRow("✍ یادداشت",x,null);
         for(String x:drafts)addRow("⚖ پیش‌نویس حقوقی",x,v->message(x));
+        for(String x:analyses)addRow("🔎 تحلیل سند",x,v->message(x));
     }
     private void openUri(String raw){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(raw)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}catch(Exception e){message("برنامه‌ای برای بازکردن این سند پیدا نشد.");}}
     private void input(String title,String hint,Handler h){EditText i=new EditText(this);i.setHint(hint);i.setTextDirection(View.TEXT_DIRECTION_RTL);new AlertDialog.Builder(this).setTitle(title).setView(i).setNegativeButton("انصراف",null).setPositiveButton("ثبت",(d,w)->{String x=i.getText().toString().trim();if(!x.isEmpty())h.accept(x);}).show();}
