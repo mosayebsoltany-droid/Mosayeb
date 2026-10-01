@@ -37,7 +37,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class LegalCaseActivity extends AppCompatActivity {
-    private static final int NAVY=Color.rgb(37,20,15),CARD=Color.rgb(63,37,27),GOLD=Color.rgb(224,166,82),CYAN=Color.rgb(239,199,132);
+    private static final int NAVY=Color.rgb(2,23,39),CARD=Color.rgb(16,42,61),GOLD=Color.rgb(230,181,76),CYAN=Color.rgb(47,214,190);
     private SharedPreferences store; private String caseId,caseName; private LinearLayout timeline;
     private EditText aiInput; private TextView aiLog;
     private final ActivityResultLauncher<String[]> picker=registerForActivityResult(new ActivityResultContracts.OpenDocument(),uri->{
@@ -61,7 +61,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         TextView title=text("⚖ "+caseName,24,GOLD,Typeface.BOLD);title.setGravity(Gravity.RIGHT);root.addView(title);
         TextView sub=text("میز خصوصی پرونده — اسناد این پرونده از سایر پرونده‌ها جداست.",12,Color.rgb(148,173,188),Typeface.NORMAL);sub.setGravity(Gravity.RIGHT);sub.setPadding(0,dp(8),0,dp(14));root.addView(sub);
 
-        LinearLayout aiCard=new LinearLayout(this);aiCard.setOrientation(LinearLayout.VERTICAL);aiCard.setPadding(dp(16),dp(15),dp(16),dp(15));aiCard.setBackground(round(Color.rgb(78,45,31),20));
+        LinearLayout aiCard=new LinearLayout(this);aiCard.setOrientation(LinearLayout.VERTICAL);aiCard.setPadding(dp(16),dp(15),dp(16),dp(15));aiCard.setBackground(round(Color.rgb(16,42,61),20));
         TextView aiTitle=text("✦ وکیل هوشمند",19,GOLD,Typeface.BOLD);aiTitle.setGravity(Gravity.RIGHT);aiCard.addView(aiTitle);
         aiLog=text("سلطان، سؤال حقوقی یا دستور تنظیم متن را بفرمایید.",14,Color.rgb(247,231,207),Typeface.NORMAL);aiLog.setGravity(Gravity.RIGHT);aiLog.setPadding(0,dp(10),0,dp(10));aiCard.addView(aiLog);
         aiInput=new EditText(this);aiInput.setHint("سؤال یا دستور شما؛ فقط همین متن ارسال می‌شود");aiInput.setTextColor(Color.WHITE);aiInput.setHintTextColor(Color.rgb(177,150,130));aiInput.setTextDirection(View.TEXT_DIRECTION_RTL);aiInput.setMinLines(2);aiCard.addView(aiInput,params(-1,-2,4,8));
@@ -73,7 +73,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         root.addView(aiCard,params(-1,-2,4,14));
 
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
-        root.addView(action("✍ ثبت یادداشت و اقدام","جلسه، تماس، مهلت یا اقدام بعدی",v->input("یادداشت پرونده","متن یادداشت",x->{add("notes",x);refresh();})));
+        root.addView(action("✍ ثبت یادداشت و اقدام","جلسه، تماس، مهلت یا اقدام بعدی",v->input("یادداشت پرونده","متن یادداشت",x->{add("notes",x);refresh();message("یادداشت با موفقیت در پرونده ذخیره شد.");})));
         root.addView(action("⚖ تنظیم متن حقوقی","لایحه، دادخواست، اظهارنامه یا شکواییه",v->chooseDraft()));
         root.addView(action("🔎 تحلیل هوشمند PDF","انتخاب سند، استخراج نکات و راستی‌آزمایی چندمدلی",v->chooseDocumentForAnalysis()));
         root.addView(action("⌕ جست‌وجوی داخل پرونده","جست‌وجو در یادداشت‌ها و پیش‌نویس‌ها",v->input("جست‌وجو","عبارت موردنظر",this::search)));
@@ -141,7 +141,7 @@ public class LegalCaseActivity extends AppCompatActivity {
             String label="تحلیل سند: "+name+"\n"+(reviewed.equals(answer)?"⚠ بدون بازبینی DeepSeek\n":"✓ بازبینی DeepSeek\n")+(finalText.equals(reviewed)?"⚠ بدون تأیید OpenAI\n\n":"✓ تأیید نهایی OpenAI\n\n");
             String result=label+finalText;
             runOnUiThread(()->{aiLog.setText(result);add("analyses",result);refresh();message("تحلیل سند ذخیره شد.");});
-        }catch(Exception e){runOnUiThread(()->aiLog.setText("تحلیل سند انجام نشد. نوع فایل، حجم، اینترنت، کلید یا سهمیه API را بررسی کنید."));}}).start();
+        }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("تحلیل سند انجام نشد: "+err+"\nنوع فایل، حجم، اینترنت، کلید و سهمیه API را بررسی کنید."));}}).start();
     }
     private byte[] readDocument(Uri uri,long max) throws Exception{
         try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
@@ -176,13 +176,13 @@ public class LegalCaseActivity extends AppCompatActivity {
             JSONObject body=new JSONObject();JSONArray contents=new JSONArray();JSONObject one=new JSONObject();JSONArray parts=new JSONArray();parts.put(new JSONObject().put("text",prompt));one.put("parts",parts);contents.put(one);body.put("contents",contents);
             try(OutputStream os=con.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
             int code=con.getResponseCode();BufferedReader br=new BufferedReader(new InputStreamReader(code<400?con.getInputStream():con.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String line;while((line=br.readLine())!=null)raw.append(line);
-            if(code>=400)throw new Exception();JSONObject response=new JSONObject(raw.toString());String answer=response.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
+            if(code>=400)throw new Exception("خطای Gemini "+code+": "+raw.substring(0,Math.min(300,raw.length())));JSONObject response=new JSONObject(raw.toString());String answer=response.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
             String reviewed=reviewWithDeepSeek(question,answer);
             String finalText=reviewWithOpenAI(question,reviewed);
             String label=(reviewed.equals(answer)?"⚠ بدون بازبینی DeepSeek\n":"✓ بازبینی DeepSeek\n")+(finalText.equals(reviewed)?"⚠ بدون تأیید OpenAI\n\n":"✓ تأیید نهایی OpenAI\n\n");
             String result=label+finalText;
             runOnUiThread(()->{aiLog.setText(result);add("drafts",result);refresh();});
-        }catch(Exception e){runOnUiThread(()->aiLog.setText("اتصال انجام نشد؛ کلید، اینترنت یا سهمیه رایگان را بررسی کنید."));}}).start();
+        }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("اتصال انجام نشد. "+err+"\nکلید، اینترنت و سهمیه API را بررسی کنید."));}}).start();
     }
 
     private String reviewWithDeepSeek(String question,String draft){
@@ -217,8 +217,22 @@ public class LegalCaseActivity extends AppCompatActivity {
         new AlertDialog.Builder(this).setTitle("نوع متن حقوقی").setItems(types,(d,which)->input(types[which],"موضوع و خواسته را بنویسید",facts->createDraft(types[which],facts))).show();
     }
     private void createDraft(String type,String facts){
-        String draft="پیش‌نویس "+type+"\n\nموضوع: "+facts+"\n\nریاست محترم مرجع رسیدگی\nبا سلام و احترام،\nاینجانب/این شرکت در خصوص موضوع فوق، با استناد به اسناد موجود در پرونده، تقاضای رسیدگی و اتخاذ تصمیم قانونی را دارم.\n\nدلایل و مستندات:\n۱. اسناد بارگذاری‌شده در پرونده\n۲. مکاتبات و یادداشت‌های ثبت‌شده\n\nخواسته:\nرسیدگی، بررسی مستندات و صدور تصمیم شایسته قانونی.\n\nاین متن پیش‌نویس اولیه است و پیش از ثبت رسمی باید بازبینی حقوقی شود.";
-        add("drafts",draft);refresh();message(draft);
+        String body;
+        switch(type){
+            case "لایحه": body="ریاست محترم مرجع رسیدگی\nبا سلام و احترام،\nدر خصوص پرونده و موضوع یادشده، مطالب و دفاعیات زیر به استحضار می‌رسد:\n\n۱. شرح ماوقع: "+facts+"\n\n۲. دلایل و مستندات:\n- قراردادها، مکاتبات و اسناد موجود در پرونده\n- رسیدها، نظریات کارشناسی و سایر ادله قابل ارائه\n\n۳. دفاعیات و استدلال حقوقی:\nبا توجه به اسناد موجود، تقاضا می‌شود رابطه حقوقی طرفین، تعهدات قراردادی، نحوه اجرا و آثار تخلف احتمالی بررسی شود. استناد قانونی قطعی پس از تطبیق اسناد با قوانین لازم‌الاجرا تکمیل خواهد شد.\n\n۴. خواسته:\nرسیدگی دقیق، بررسی دلایل و صدور تصمیم شایسته قانونی مورد تقاضاست.";break;
+            case "دادخواست": body="ریاست محترم دادگاه صالح\nبا سلام،\nخواهان: [تکمیل شود]\nخوانده: [تکمیل شود]\nخواسته و بهای آن: "+facts+"\n\nدلایل و منضمات:\n۱. قرارداد و مکاتبات\n۲. رسیدها و اسناد پرداخت یا تحویل\n۳. نظریه کارشناسی و سایر ادله\n\nشرح دادخواست:\nبا توجه به رابطه حقوقی طرفین و اسناد پرونده، خوانده از اجرای تعهدات خودداری یا تخلف کرده است. تقاضای رسیدگی و صدور حکم متناسب با خواسته، به انضمام خسارات قانونی در صورت وجود شرایط، مورد استدعاست.";break;
+            case "اظهارنامه": body="مخاطب محترم،\nموضوع اظهارنامه: "+facts+"\n\nبدین‌وسیله رسماً اعلام می‌شود ظرف مهلت قانونی/متعارف نسبت به انجام تعهد، ارائه پاسخ و جلوگیری از ورود خسارت اقدام کنید. این اظهارنامه به‌منظور مطالبه رسمی حق، حفظ ادله و جلوگیری از تضییع حقوق ارسال می‌شود. جزئیات تعهد، مهلت و مستندات باید پیش از ثبت تکمیل شود.";break;
+            case "شکواییه": body="ریاست محترم دادسرای عمومی و انقلاب\nبا سلام،\nشاکی: [تکمیل شود]\nمشتکی‌عنه: [تکمیل شود]\nموضوع شکایت: "+facts+"\n\nشرح واقعه:\nواقعه مورد شکایت بر اساس اسناد و قرائن موجود رخ داده است. تقاضای انجام تحقیقات، استعلام‌های لازم، بررسی اصالت مدارک، تحقیق از مطلعان و اتخاذ تصمیم قانونی مورد استدعاست. عنوان کیفری و مواد قانونی باید پس از احراز دقیق ارکان قانونی، مادی و معنوی تعیین شود.";break;
+            default: body="ریاست محترم مرجع صالح\nموضوع: درخواست کارشناسی و تأمین دلیل\n\nبا سلام،\nبا توجه به احتمال تغییر، زوال یا دشوار شدن دسترسی به دلایل مرتبط با موضوع «"+facts+"»، تقاضای حفظ وضعیت موجود، بازدید، صورت‌برداری، بررسی اسناد و ارجاع امر به کارشناس رسمی در رشته مرتبط را دارم. تعیین دقیق محل، موضوع کارشناسی و دلایل فوریت پیش از ثبت تکمیل شود.";
+        }
+        String draft="پیش‌نویس "+type+"\n\n"+body+"\n\n⚠ این نسخه محلی است و هنوز تأیید چندمدلی نشده است.";
+        add("drafts",draft);refresh();
+        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
+        if(key.isEmpty()){message(draft+"\n\nبرای تکمیل هوشمند، ابتدا کلید Gemini را در تنظیمات وارد کنید.");return;}
+        new AlertDialog.Builder(this).setTitle("پیش‌نویس ذخیره شد").setMessage("نسخه اولیه نوشته و ذخیره شد. برای تکمیل حرفه‌ای و بازبینی چندمدلی ارسال شود؟")
+                .setNegativeButton("فعلاً نه",(d,w)->message(draft)).setPositiveButton("تکمیل هوشمند",(d,w)->{
+                    aiInput.setText("یک "+type+" حرفه‌ای و قابل ویرایش بر اساس حقوق ایران تنظیم کن. موضوع و اطلاعات: "+facts+"\nپیش‌نویس محلی: "+draft);askAi();
+                }).show();
     }
     private void search(String q){
         StringBuilder out=new StringBuilder();
