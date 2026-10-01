@@ -46,6 +46,7 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     private Button mic;
     private LinearLayout conversation;
     private boolean listening;
+    private boolean persianVoiceAvailable;
 
     private final ActivityResultLauncher<String[]> permissions =
             registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> updatePermissionCount());
@@ -164,7 +165,10 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     private void initVoice() {
         speaker = new TextToSpeech(this, r -> {
             if (r == TextToSpeech.SUCCESS) {
-                speaker.setLanguage(new Locale("fa","IR"));
+                int fa = speaker.setLanguage(new Locale("fa","IR"));
+                persianVoiceAvailable = fa != TextToSpeech.LANG_MISSING_DATA
+                        && fa != TextToSpeech.LANG_NOT_SUPPORTED;
+                if (!persianVoiceAvailable) speaker.setLanguage(Locale.US);
                 speaker.setSpeechRate(.9f);
                 say("در خدمت شما هستم سلطان");
             }
@@ -239,7 +243,12 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     private void reply(String message) { addBubble("Mose", message, false); say(message); }
     private void say(String message) {
         status.setText(message);
-        if(speaker!=null) speaker.speak(message, TextToSpeech.QUEUE_FLUSH, null, "mose");
+        if (speaker != null) {
+            String spoken = persianVoiceAvailable ? message : "Cheshm, Soltan.";
+            speaker.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "mose");
+        }
+        mic.setText("🎙");
+        listening = false;
     }
     private void openPackage(String pkg,String label) {
         Intent i=getPackageManager().getLaunchIntentForPackage(pkg);
