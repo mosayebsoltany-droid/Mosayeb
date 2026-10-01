@@ -22,6 +22,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HiMose">
         <activity
+            android:name=".LegalCaseActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
             android:name=".LawyerActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
