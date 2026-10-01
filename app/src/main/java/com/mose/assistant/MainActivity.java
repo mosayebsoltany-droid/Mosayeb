@@ -288,28 +288,11 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     }
 
     private void showLawyerModule() {
-        liveText.setText("وکیل Mose");
-        addBubble("وکیل Mose", "سلطان، چه کنم؟", false);
-        sayWithStyle("سلطان، چه کنم؟", "Soltan, che konam?", false);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("⚖ وکیل Mose")
-                .setMessage("میز خصوصی پرونده‌ها\n\nاز این بخش می‌توانید یک سند را از حافظه گوشی انتخاب کنید. اطلاعات پرونده در کد عمومی برنامه ذخیره نمی‌شود.")
-                .setNegativeButton("بستن", null)
-                .setPositiveButton("انتخاب سند", (d, w) -> {
-                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    pick.setType("*/*");
-                    pick.addCategory(Intent.CATEGORY_OPENABLE);
-                    try { startActivity(pick); }
-                    catch(Exception e) { reply("سلطان، فایل‌منیجر گوشی باز نشد."); }
-                }).create();
-        dialog.setOnShowListener(x -> {
-            TextView message = dialog.findViewById(android.R.id.message);
-            if(message != null) {
-                message.setTextDirection(View.TEXT_DIRECTION_RTL);
-                message.setGravity(Gravity.RIGHT);
-            }
-        });
-        dialog.show();
+        try {
+            startActivity(new Intent(this, LawyerActivity.class));
+        } catch(Exception e) {
+            reply("سلطان، میز وکیل باز نشد.");
+        }
     }
 
     private void showRoleModule(String role) {
