@@ -1,6 +1,9 @@
 package com.mose.assistant;
 
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -116,9 +119,63 @@ public class LegalCaseActivity extends AppCompatActivity {
 
     private void freeQuickDraft(){
         String q=aiInput.getText().toString().trim();
-        if(q.isEmpty()){message("ابتدا موضوع یا توضیحات متن را بنویسید.");return;}
-        String draft="یادداشت حقوقی پرونده «"+caseName+"»\n\nموضوع و شرح شما:\n"+q+"\n\nموارد لازم برای تکمیل:\n۱. مشخصات کامل طرفین و سمت آنان\n۲. ترتیب زمانی رویدادها\n۳. خواسته دقیق و قابل اندازه‌گیری\n۴. قراردادها، مکاتبات، رسیدها و اسامی شهود\n۵. مرجع صالح و مهلت احتمالی\n\n⚠ این نسخه رایگان محلی است؛ شماره ماده یا واقعیت جدیدی به آن افزوده نشده است.";
-        aiInput.setText("");aiLog.setText(draft);add("drafts",draft);refresh();message("متن رایگان ساخته و در پرونده ذخیره شد.");
+        if(q.isEmpty()){message("فقط دستور خود را بنویسید؛ مثال: یک دادخواست مطالبه خسارت برایم بنویس.");return;}
+        String type=detectDocumentType(q);
+        String authority=blankForDraft(store.getString("profile_authority",""),"[مرجع رسیدگی تکمیل شود]");
+        String parties=blankForDraft(store.getString("profile_parties",""),"[مشخصات و سمت طرفین تکمیل شود]");
+        String subject=store.getString("profile_subject","").trim();
+        if(subject.isEmpty())subject=cleanInstruction(q,type);
+        String facts=buildCaseFacts(q);
+        String evidence=buildCaseEvidence();
+        String request=store.getString("profile_claim","").trim();
+        if(request.isEmpty())request=inferRequest(type,subject);
+        aiInput.setText("");
+        createProfessionalDraft(type,authority,parties,subject,facts,evidence,request);
+    }
+    private String detectDocumentType(String q){
+        if(q.contains("شکواییه")||q.contains("شکایت کیفری")||q.contains("جرم"))return "شکواییه کیفری";
+        if(q.contains("اظهارنامه"))return "اظهارنامه رسمی";
+        if(q.contains("تامین دلیل")||q.contains("تأمین دلیل")||q.contains("کارشناسی"))return "تأمین دلیل و کارشناسی";
+        if(q.contains("لایحه")||q.contains("دفاع"))return "لایحه دفاعیه";
+        return "دادخواست حقوقی";
+    }
+    private String cleanInstruction(String q,String type){
+        String x=q.replace("برایم","").replace("برام","").replace("بنویس","").replace("تنظیم کن","")
+                .replace("یک","").replace(type,"").replace("دادخواست","").replace("لایحه","")
+                .replace("شکواییه","").replace("اظهارنامه","").trim();
+        return x.isEmpty()?"موضوع مندرج در دستور کاربر":x;
+    }
+    private String blankForDraft(String x,String fallback){return x==null||x.trim().isEmpty()?fallback:x.trim();}
+    private String buildCaseFacts(String instruction){
+        StringBuilder b=new StringBuilder();
+        b.append("دستور کاربر: ").append(instruction).append("\n");
+        Set<String> events=get("events");
+        if(!events.isEmpty()){b.append("\nترتیب وقایع ثبت‌شده در پرونده:\n");for(String e:events)b.append("• ").append(e).append("\n");}
+        Set<String> notes=get("notes");
+        if(!notes.isEmpty()){b.append("\nیادداشت‌های مرتبط:\n");for(String n:notes)b.append("• ").append(n).append("\n");}
+        String status=store.getString("profile_status","").trim();
+        if(!status.isEmpty())b.append("\nوضعیت فعلی: ").append(status);
+        return b.toString();
+    }
+    private String buildCaseEvidence(){
+        StringBuilder b=new StringBuilder();
+        for(String e:get("evidence_matrix"))b.append(e).append("\n");
+        int i=1;for(String ignored:get("docs"))b.append("سند پیوست شماره ").append(i++).append("\n");
+        if(b.length()==0)b.append("[دلایل و پیوست‌ها هنوز ثبت نشده است]");
+        return b.toString();
+    }
+    private String inferRequest(String type,String subject){
+        if(type.equals("شکواییه کیفری"))return "انجام تحقیقات، جمع‌آوری ادله و تعقیب قانونی مرتکب یا مرتکبان پس از احراز ارکان قانونی";
+        if(type.equals("اظهارنامه رسمی"))return "انجام تعهد و ارائه پاسخ رسمی در مهلت قانونی، با حفظ کلیه حقوق اظهارکننده";
+        if(type.equals("تأمین دلیل و کارشناسی"))return "ثبت فوری وضعیت موجود، صورت‌برداری از ادله و ارجاع امر به کارشناس رسمی رشته مرتبط";
+        if(type.equals("لایحه دفاعیه"))return "رد ادعاهای فاقد دلیل طرف مقابل و اتخاذ تصمیم شایسته بر پایه اسناد پرونده";
+        return "صدور حکم شایسته نسبت به "+subject+" به انضمام خسارات و هزینه‌های قانونی پس از احراز";
+    }
+    private void showOutputActions(String draft){
+        new AlertDialog.Builder(this).setTitle("خروجی آماده است").setMessage(draft)
+                .setNeutralButton("کپی",(d,w)->{ClipboardManager cm=(ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE);cm.setPrimaryClip(ClipData.newPlainText("متن حقوقی",draft));message("متن کپی شد.");})
+                .setNegativeButton("اشتراک‌گذاری",(d,w)->{Intent send=new Intent(Intent.ACTION_SEND);send.setType("text/plain");send.putExtra(Intent.EXTRA_SUBJECT,"متن حقوقی پرونده "+caseName);send.putExtra(Intent.EXTRA_TEXT,draft);startActivity(Intent.createChooser(send,"ارسال خروجی"));})
+                .setPositiveButton("ذخیره شد",null).show();
     }
     private void chooseDocumentForLocalAnalysis(){
         Set<String> docs=get("docs");
@@ -187,7 +244,7 @@ public class LegalCaseActivity extends AppCompatActivity {
             body="بسمه‌تعالی\n\nریاست محترم "+authority+"\n\nمتقاضی: "+parties+"\nموضوع: درخواست تأمین دلیل و ارجاع امر به کارشناسی درباره «"+subject+"»\n\nبا سلام و احترام،\nبه استحضار می‌رساند اوضاع و وقایع مرتبط با موضوع به شرح زیر است:\n"+facts+"\n\nدلایل و مدارک فعلی:\n"+numberLines(evidence)+"\n\nبا توجه به احتمال تغییر وضعیت موجود، زوال آثار، دشوار شدن دسترسی به مدارک یا ضرورت ثبت فوری کیفیت و کمیت موضوع، تقاضا می‌شود بدون ورود ماهوی به اصل اختلاف، وضعیت فعلی مشاهده، صورت‌برداری و حفظ شود و در صورت لزوم کارشناس رسمی رشته مرتبط تعیین گردد.\n\nمحورهای پیشنهادی کارشناسی:\n۱. بررسی و توصیف دقیق وضعیت موجود؛\n۲. تطبیق اسناد، مقادیر، کیفیت، تاریخ‌ها و اقدامات انجام‌شده؛\n۳. تعیین میزان اختلاف، کسری، خسارت یا هزینه حسب موضوع؛\n۴. ثبت تصاویر، نمونه‌ها، مشخصات فنی و اظهارات اشخاص حاضر؛\n۵. پاسخ به پرسش‌های تخصصی مندرج در درخواست.\n\nخواسته نهایی:\n"+numberLines(request)+"\n\nنام و امضا: [تکمیل شود]\nتاریخ: [تکمیل شود]";
         }
         String draft=type+" — نسخه حرفه‌ای قابل ویرایش\n\n"+body+"\n\nیادآوری: پیش از ثبت رسمی، مشخصات هویتی، مرجع صالح، خواسته، بهای خواسته، مهلت‌ها و تطبیق نهایی پیوست‌ها کنترل شود.";
-        add("drafts",draft);refresh();aiLog.setText("متن حرفه‌ای ساخته و در محتوای پرونده ذخیره شد.");message(draft);
+        add("drafts",draft);refresh();aiLog.setText(draft);showOutputActions(draft);
     }
     private String numberLines(String raw){
         String[] lines=raw.split("\\n");StringBuilder out=new StringBuilder();int n=1;
