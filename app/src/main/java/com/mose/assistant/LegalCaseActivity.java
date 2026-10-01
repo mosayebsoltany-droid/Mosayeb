@@ -42,7 +42,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper;
 public class LegalCaseActivity extends AppCompatActivity {
     private static final int NAVY=Color.rgb(2,23,39),CARD=Color.rgb(16,42,61),GOLD=Color.rgb(230,181,76),CYAN=Color.rgb(47,214,190);
     private SharedPreferences store; private String caseId,caseName; private LinearLayout timeline;
-    private EditText aiInput; private TextView aiLog;
+    private EditText aiInput; private TextView aiLog,profileSummary;
     private final ActivityResultLauncher<String[]> picker=registerForActivityResult(new ActivityResultContracts.OpenDocument(),uri->{
         if(uri==null)return;
         try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}
@@ -62,7 +62,8 @@ public class LegalCaseActivity extends AppCompatActivity {
         ScrollView scroll=new ScrollView(this);scroll.setBackgroundColor(NAVY);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(20),dp(20),dp(20),dp(30));root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);scroll.addView(root);
         TextView title=text("⚖ "+caseName,24,GOLD,Typeface.BOLD);title.setGravity(Gravity.RIGHT);root.addView(title);
-        TextView sub=text("میز خصوصی پرونده — اسناد این پرونده از سایر پرونده‌ها جداست.",12,Color.rgb(148,173,188),Typeface.NORMAL);sub.setGravity(Gravity.RIGHT);sub.setPadding(0,dp(8),0,dp(14));root.addView(sub);
+        TextView sub=text("میز خصوصی پرونده — اسناد این پرونده از سایر پرونده‌ها جداست.",12,Color.rgb(148,173,188),Typeface.NORMAL);sub.setGravity(Gravity.RIGHT);sub.setPadding(0,dp(8),0,dp(10));root.addView(sub);
+        profileSummary=text("",13,Color.rgb(205,218,226),Typeface.NORMAL);profileSummary.setGravity(Gravity.RIGHT);profileSummary.setPadding(dp(12),dp(10),dp(12),dp(10));profileSummary.setBackground(round(Color.rgb(10,34,50),14));root.addView(profileSummary,params(-1,-2,2,12));
 
         LinearLayout aiCard=new LinearLayout(this);aiCard.setOrientation(LinearLayout.VERTICAL);aiCard.setPadding(dp(16),dp(15),dp(16),dp(15));aiCard.setBackground(round(Color.rgb(16,42,61),20));
         TextView aiTitle=text("✦ وکیل هوشمند",19,GOLD,Typeface.BOLD);aiTitle.setGravity(Gravity.RIGHT);aiCard.addView(aiTitle);
@@ -74,6 +75,9 @@ public class LegalCaseActivity extends AppCompatActivity {
         offline.setGravity(Gravity.RIGHT);offline.setPadding(0,dp(8),0,0);aiCard.addView(offline);
         root.addView(aiCard,params(-1,-2,4,14));
 
+        root.addView(action("🗂 شناسنامه حرفه‌ای پرونده","مرجع، طرفین، شماره، موضوع، خواسته و وضعیت",v->editCaseProfile()));
+        root.addView(action("🕒 خط زمانی وقایع","ثبت تاریخ، رویداد و شرح هر اتفاق",v->addTimelineEvent()));
+        root.addView(action("⚖ ماتریس ادعا و ادله","ارتباط هر ادعا با دلیل، ایراد و پاسخ",v->addEvidenceMatrix()));
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
         root.addView(action("✍ ثبت یادداشت و اقدام","جلسه، تماس، مهلت یا اقدام بعدی",v->input("یادداشت پرونده","متن یادداشت",x->{add("notes",x);refresh();message("یادداشت با موفقیت در پرونده ذخیره شد.");})));
         root.addView(action("⚖ تنظیم متن حقوقی","لایحه، دادخواست، اظهارنامه یا شکواییه",v->chooseDraft()));
@@ -85,6 +89,30 @@ public class LegalCaseActivity extends AppCompatActivity {
 
         Button back=button("بازگشت به فهرست پرونده‌ها");back.setOnClickListener(v->finish());root.addView(back,params(-1,dp(54),20,0));setContentView(scroll);
     }
+
+    private void editCaseProfile(){
+        ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),dp(4),dp(14),dp(8));box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);scroll.addView(box);
+        EditText role=profileField("سمت شما در پرونده",store.getString("profile_role","")),parties=profileField("طرف مقابل و سمت او",store.getString("profile_parties","")),authority=profileField("مرجع رسیدگی و شعبه",store.getString("profile_authority","")),number=profileField("شماره پرونده / بایگانی",store.getString("profile_number","")),subject=profileField("موضوع اختلاف",store.getString("profile_subject","")),claim=profileField("خواسته یا نتیجه موردنظر",store.getString("profile_claim","")),status=profileField("وضعیت فعلی و اقدام بعدی",store.getString("profile_status",""));
+        box.addView(role);box.addView(parties);box.addView(authority);box.addView(number);box.addView(subject);box.addView(claim);box.addView(status);
+        new AlertDialog.Builder(this).setTitle("شناسنامه پرونده «"+caseName+"»").setView(scroll).setNegativeButton("انصراف",null).setPositiveButton("ذخیره",(d,w)->{store.edit().putString("profile_role",role.getText().toString().trim()).putString("profile_parties",parties.getText().toString().trim()).putString("profile_authority",authority.getText().toString().trim()).putString("profile_number",number.getText().toString().trim()).putString("profile_subject",subject.getText().toString().trim()).putString("profile_claim",claim.getText().toString().trim()).putString("profile_status",status.getText().toString().trim()).apply();refresh();message("شناسنامه پرونده ذخیره شد.");}).show();
+    }
+    private EditText profileField(String hint,String value){EditText e=field(hint,1);e.setText(value);return e;}
+    private void addTimelineEvent(){
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),0,dp(14),0);box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        EditText date=field("تاریخ رویداد؛ مثال ۱۴۰۵/۰۶/۲۶",1),title=field("عنوان کوتاه رویداد",1),detail=field("شرح دقیق اتفاق، اشخاص و نتیجه",3);box.addView(date);box.addView(title);box.addView(detail);
+        new AlertDialog.Builder(this).setTitle("ثبت رویداد پرونده").setView(box).setNegativeButton("انصراف",null).setPositiveButton("ثبت",(d,w)->{String da=date.getText().toString().trim(),ti=title.getText().toString().trim(),de=detail.getText().toString().trim();if(ti.isEmpty()||de.isEmpty()){message("عنوان و شرح رویداد الزامی است.");return;}add("events",(da.isEmpty()?"بدون تاریخ":da)+" | "+ti+" | "+de);refresh();message("رویداد در خط زمانی ثبت شد.");}).show();
+    }
+    private void addEvidenceMatrix(){
+        ScrollView scroll=new ScrollView(this);LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),0,dp(14),0);box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);scroll.addView(box);
+        EditText claim=field("ادعا یا نکته‌ای که باید اثبات شود",2),evidence=field("دلیل و سند پشتیبان",2),objection=field("ایراد یا دفاع احتمالی طرف مقابل",2),answer=field("پاسخ شما و مدرک تکمیلی",2);box.addView(claim);box.addView(evidence);box.addView(objection);box.addView(answer);
+        new AlertDialog.Builder(this).setTitle("افزودن ردیف ماتریس ادله").setView(scroll).setNegativeButton("انصراف",null).setPositiveButton("ثبت",(d,w)->{String c=claim.getText().toString().trim(),e=evidence.getText().toString().trim(),o=objection.getText().toString().trim(),an=answer.getText().toString().trim();if(c.isEmpty()||e.isEmpty()){message("ادعا و دلیل پشتیبان الزامی است.");return;}add("evidence_matrix","ادعا: "+c+"\nدلیل: "+e+"\nایراد احتمالی: "+(o.isEmpty()?"ثبت نشده":o)+"\nپاسخ: "+(an.isEmpty()?"نیازمند تکمیل":an));refresh();message("ردیف ادله ذخیره شد.");}).show();
+    }
+    private void updateProfileSummary(){
+        if(profileSummary==null)return;String subject=store.getString("profile_subject",""),authority=store.getString("profile_authority",""),number=store.getString("profile_number",""),status=store.getString("profile_status","");
+        if(subject.isEmpty()&&authority.isEmpty()&&number.isEmpty()&&status.isEmpty()){profileSummary.setText("شناسنامه پرونده هنوز تکمیل نشده است.");return;}
+        profileSummary.setText("موضوع: "+blank(subject)+"\nمرجع: "+blank(authority)+"\nشماره: "+blank(number)+"\nوضعیت: "+blank(status));
+    }
+    private String blank(String x){return x==null||x.trim().isEmpty()?"تکمیل نشده":x;}
 
     private void freeQuickDraft(){
         String q=aiInput.getText().toString().trim();
@@ -114,141 +142,11 @@ public class LegalCaseActivity extends AppCompatActivity {
         }catch(Exception e){String err=e.getMessage()==null?"فایل قابل خواندن نیست.":e.getMessage();runOnUiThread(()->aiLog.setText("تحلیل محلی انجام نشد: "+err+"\nاگر PDF اسکن‌شده است، نسخه متنی یا تصاویر صفحات را استفاده کنید."));}}).start();
     }
 
-    private void configureAi(){
-        EditText input=new EditText(this);input.setHint("کلید Gemini API");input.setSingleLine(true);
-        new AlertDialog.Builder(this).setTitle("اتصال هوش مصنوعی").setMessage("کلید در فضای خصوصی برنامه ذخیره می‌شود. فقط متن‌هایی که خودتان ارسال می‌کنید به Gemini می‌روند.")
-                .setView(input).setNegativeButton("انصراف",null).setPositiveButton("ذخیره",(d,w)->{String key=input.getText().toString().trim();if(!key.isEmpty()){getSharedPreferences("mose_private_settings",MODE_PRIVATE).edit().putString("gemini_key",key).apply();message("کلید ذخیره شد.");}}).show();
-    }
-    private void configureReviewers(){
-        SharedPreferences p=getSharedPreferences("mose_private_settings",MODE_PRIVATE);
-        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),0,dp(14),0);
-        EditText deep=new EditText(this);deep.setHint("کلید API دیپ‌سیک");deep.setSingleLine(true);box.addView(deep);
-        EditText open=new EditText(this);open.setHint("کلید OpenAI API");open.setSingleLine(true);box.addView(open);
-        new AlertDialog.Builder(this).setTitle("اتصال الزامی نویسنده و بازبین")
-                .setMessage("DeepSeek متن حقوقی را می‌نویسد و OpenAI نسخه نهایی را بازبینی می‌کند. برای تولید هوشمند، ثبت هر دو کلید الزامی است.")
-                .setView(box).setNegativeButton("انصراف",null).setPositiveButton("ذخیره",(d,w)->{
-                    String dk=deep.getText().toString().trim(),ok=open.getText().toString().trim();
-                    if(dk.isEmpty()||ok.isEmpty()){message("هر دو کلید DeepSeek و OpenAI الزامی‌اند و چیزی ذخیره نشد.");return;}
-                    p.edit().putString("deepseek_key",dk).putString("openai_key",ok).apply();message("اتصال DeepSeek و OpenAI ذخیره شد.");
-                }).show();
-    }
-
-    private void chooseDocumentForAnalysis(){
-        Set<String> docs=get("docs");
-        if(docs.isEmpty()){message("ابتدا یک فایل PDF یا تصویر به پرونده اضافه کنید.");return;}
-        String[] uris=docs.toArray(new String[0]);String[] names=new String[uris.length];
-        for(int i=0;i<uris.length;i++)names[i]=(i+1)+" — "+getDisplayName(Uri.parse(uris[i]));
-        new AlertDialog.Builder(this).setTitle("انتخاب سند برای تحلیل").setItems(names,(d,which)->confirmDocumentAnalysis(Uri.parse(uris[which]))).show();
-    }
-    private void confirmDocumentAnalysis(Uri uri){
-        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("gemini_key","");
-        SharedPreferences settings=getSharedPreferences("mose_private_settings",MODE_PRIVATE);
-        String deep=settings.getString("deepseek_key",""),open=settings.getString("openai_key","");
-        if(key.isEmpty()){message("برای خواندن PDF ابتدا اتصال Gemini را ثبت کنید.");configureAi();return;}
-        if(deep.isEmpty()||open.isEmpty()){message("برای تحلیل نهایی PDF، اتصال DeepSeek و OpenAI نیز الزامی است.");configureReviewers();return;}
-        String name=getDisplayName(uri);long size=getDocumentSize(uri);
-        if(size>10L*1024L*1024L){message("حجم این فایل بیشتر از ۱۰ مگابایت است. برای حفظ پایداری، فایل را کم‌حجم یا به چند بخش تقسیم کنید.");return;}
-        String sizeText=size>0?String.format(java.util.Locale.US,"%.1f مگابایت",size/1048576.0):"نامشخص";
-        new AlertDialog.Builder(this).setTitle("اجازه تحلیل سند")
-                .setMessage("فایل: "+name+"\nحجم: "+sizeText+"\n\nاصل فایل برای استخراج و تحلیل به Gemini ارسال می‌شود. سپس متن تحلیل برای راستی‌آزمایی به DeepSeek و OpenAI فرستاده می‌شود. آیا تأیید می‌کنید؟")
-                .setNegativeButton("خیر",null).setPositiveButton("تأیید و تحلیل",(d,w)->analyzeDocument(uri,key,name)).show();
-    }
-    private void analyzeDocument(Uri uri,String key,String name){
-        aiLog.setText("در حال خواندن و تحلیل سند «"+name+"»…");
-        new Thread(()->{try{
-            byte[] bytes=readDocument(uri,10L*1024L*1024L);
-            String mime=getContentResolver().getType(uri);if(mime==null)mime="application/pdf";
-            URL url=new URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key="+key);
-            HttpURLConnection con=(HttpURLConnection)url.openConnection();con.setRequestMethod("POST");con.setDoOutput(true);con.setConnectTimeout(30000);con.setReadTimeout(120000);con.setRequestProperty("Content-Type","application/json; charset=UTF-8");
-            String prompt="این سند متعلق به پرونده «"+caseName+"» است. سند را به فارسی و با رویکرد حقوق ایران تحلیل کن. خروجی شامل: ۱) نوع و خلاصه سند، ۲) طرفین و سمت‌ها، ۳) تاریخ‌ها، شماره‌ها، مبالغ و تعهدات، ۴) ادعاها و ادله، ۵) تعارض‌ها و ابهام‌ها، ۶) نقاط قوت و ضعف اثباتی، ۷) مدارک مفقود، ۸) اقدامات و مهلت‌های پیشنهادی، ۹) هشدار درباره مواد قانونی نامطمئن باشد. هیچ متن ناخوانا یا ماده قانونی را حدس نزن و برای هر مورد نامطمئن صریحاً بنویس نیازمند بررسی است.";
-            JSONArray parts=new JSONArray().put(new JSONObject().put("text",prompt))
-                    .put(new JSONObject().put("inline_data",new JSONObject().put("mime_type",mime).put("data",Base64.encodeToString(bytes,Base64.NO_WRAP))));
-            JSONObject body=new JSONObject().put("contents",new JSONArray().put(new JSONObject().put("parts",parts)));
-            try(OutputStream os=con.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
-            int code=con.getResponseCode();BufferedReader br=new BufferedReader(new InputStreamReader(code<400?con.getInputStream():con.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String line;while((line=br.readLine())!=null)raw.append(line);
-            if(code>=400)throw new Exception("Gemini "+code);
-            String answer=new JSONObject(raw.toString()).getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text");
-            String request="راستی‌آزمایی تحلیل حقوقی سند «"+name+"» در پرونده «"+caseName+"»";
-            String reviewed=reviewWithDeepSeek(request,answer);if(reviewed.equals(answer))throw new Exception("بازبینی DeepSeek انجام نشد.");String finalText=reviewWithOpenAI(request,reviewed);if(finalText.equals(reviewed))throw new Exception("بازبینی OpenAI انجام نشد.");
-            String label="تحلیل سند: "+name+"\n✓ استخراج Gemini\n✓ بازبینی DeepSeek\n✓ تأیید نهایی OpenAI\n\n";
-            String result=label+finalText;
-            runOnUiThread(()->{aiLog.setText(result);add("analyses",result);refresh();message("تحلیل سند ذخیره شد.");});
-        }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("تحلیل سند انجام نشد: "+err+"\nنوع فایل، حجم، اینترنت، کلید و سهمیه API را بررسی کنید."));}}).start();
-    }
-    private byte[] readDocument(Uri uri,long max) throws Exception{
-        try(InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream()){
-            if(in==null)throw new Exception("file");byte[] buf=new byte[8192];int n;long total=0;
-            while((n=in.read(buf))!=-1){total+=n;if(total>max)throw new Exception("large");out.write(buf,0,n);}return out.toByteArray();
-        }
-    }
     private String getDisplayName(Uri uri){
         try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){
             if(c!=null&&c.moveToFirst())return c.getString(0);
         }catch(Exception ignored){}String x=uri.getLastPathSegment();return x==null?"سند":x;
     }
-    private long getDocumentSize(Uri uri){
-        try(Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.SIZE},null,null,null)){
-            if(c!=null&&c.moveToFirst()&&!c.isNull(0))return c.getLong(0);
-        }catch(Exception ignored){}return -1;
-    }
-
-    private void askAi(){
-        String question=aiInput.getText().toString().trim();if(question.isEmpty()){message("ابتدا موضوع یا دستور متن را بنویسید.");return;}
-        SharedPreferences p=getSharedPreferences("mose_private_settings",MODE_PRIVATE);
-        String deep=p.getString("deepseek_key",""),open=p.getString("openai_key","");
-        if(deep.isEmpty()||open.isEmpty()){message("برای نوشتن هوشمند، اتصال DeepSeek و OpenAI الزامی است. دکمه اتصال الزامی را بزنید.");configureReviewers();return;}
-        new AlertDialog.Builder(this).setTitle("تأیید تولید متن").setMessage("DeepSeek متن را بنویسد و سپس OpenAI آن را بازبینی نهایی کند؟")
-                .setNegativeButton("خیر",null).setPositiveButton("بله، شروع شود",(d,w)->sendQuestion(question)).show();
-    }
-    private void sendQuestion(String question){
-        aiInput.setText("");aiLog.setText("DeepSeek در حال نوشتن متن حقوقی است…");
-        new Thread(()->{try{
-            String draft=writeWithDeepSeek(question);
-            runOnUiThread(()->aiLog.setText("متن اولیه نوشته شد؛ OpenAI در حال بازبینی نهایی است…"));
-            String finalText=reviewWithOpenAI(question,draft);
-            if(finalText.equals(draft))throw new Exception("بازبینی OpenAI انجام نشد؛ کلید یا اعتبار API را بررسی کنید.");
-            String result="✓ نگارش اولیه DeepSeek\n✓ بازبینی نهایی OpenAI\n\n"+finalText;
-            runOnUiThread(()->{aiLog.setText(result);add("drafts",result);refresh();message("متن نهایی نوشته و در پرونده ذخیره شد.");});
-        }catch(Exception e){String err=e.getMessage()==null?"خطای نامشخص":e.getMessage();runOnUiThread(()->aiLog.setText("تولید متن انجام نشد: "+err));}}).start();
-    }
-    private String writeWithDeepSeek(String question) throws Exception{
-        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("deepseek_key","");
-        URL u=new URL("https://api.deepseek.com/chat/completions");HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(20000);c.setReadTimeout(90000);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer "+key);
-        String prompt="به عنوان نویسنده حرفه‌ای متون حقوقی ایران، درخواست زیر را دقیق، رسمی، راست‌چین‌پذیر و قابل ویرایش تنظیم کن. هیچ واقعه، شماره، تاریخ، نام یا ماده قانونی را حدس نزن؛ جای اطلاعات ناقص را با [تکمیل شود] مشخص کن. ارکان دعوا، خواسته، ادله، دفاعیات و نتیجه‌گیری را متناسب با نوع متن کامل کن. درخواست: "+question;
-        JSONObject body=new JSONObject().put("model","deepseek-chat").put("messages",new JSONArray().put(new JSONObject().put("role","user").put("content",prompt)));
-        try(OutputStream os=c.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
-        int code=c.getResponseCode();BufferedReader b=new BufferedReader(new InputStreamReader(code<400?c.getInputStream():c.getErrorStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String l;while((l=b.readLine())!=null)raw.append(l);
-        if(code>=400)throw new Exception("خطای DeepSeek "+code+": "+raw.substring(0,Math.min(250,raw.length())));
-        return new JSONObject(raw.toString()).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
-    }
-
-    private String reviewWithDeepSeek(String question,String draft){
-        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("deepseek_key","");
-        if(key.isEmpty())return draft;
-        try{
-            URL u=new URL("https://api.deepseek.com/chat/completions");HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(20000);c.setReadTimeout(60000);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer "+key);
-            String prompt="به عنوان بازبین حقوق ایران، متن زیر را از نظر تناقض، ادعای بی‌دلیل، مواد قانونی احتمالا نادرست، نقص خواسته و ساختار نقد و سپس نسخه اصلاح‌شده کامل را ارائه کن. درخواست اصلی: "+question+"\nمتن: "+draft;
-            JSONObject body=new JSONObject().put("model","deepseek-chat").put("messages",new JSONArray().put(new JSONObject().put("role","user").put("content",prompt)));
-            try(OutputStream os=c.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
-            int code=c.getResponseCode();if(code>=400)return draft;BufferedReader b=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String l;while((l=b.readLine())!=null)raw.append(l);
-            return new JSONObject(raw.toString()).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content");
-        }catch(Exception e){return draft;}
-    }
-    private String reviewWithOpenAI(String question,String draft){
-        String key=getSharedPreferences("mose_private_settings",MODE_PRIVATE).getString("openai_key","");
-        if(key.isEmpty())return draft;
-        try{
-            URL u=new URL("https://api.openai.com/v1/responses");HttpURLConnection c=(HttpURLConnection)u.openConnection();c.setRequestMethod("POST");c.setDoOutput(true);c.setConnectTimeout(20000);c.setReadTimeout(60000);c.setRequestProperty("Content-Type","application/json");c.setRequestProperty("Authorization","Bearer "+key);
-            String prompt="این متن قبلا تولید و نقد شده است. به عنوان بازبین نهایی حقوق ایران، فقط نسخه نهایی منسجم را ارائه کن؛ هیچ ماده قانونی مشکوک را قطعی ننویس و کاستی‌های اطلاعاتی را مشخص کن. درخواست: "+question+"\nمتن بازبینی‌شده: "+draft;
-            JSONObject body=new JSONObject().put("model","gpt-5-mini").put("input",prompt);
-            try(OutputStream os=c.getOutputStream()){os.write(body.toString().getBytes(StandardCharsets.UTF_8));}
-            int code=c.getResponseCode();if(code>=400)return draft;BufferedReader b=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8));StringBuilder raw=new StringBuilder();String l;while((l=b.readLine())!=null)raw.append(l);
-            JSONObject response=new JSONObject(raw.toString());JSONArray output=response.getJSONArray("output");
-            for(int i=0;i<output.length();i++){JSONObject item=output.getJSONObject(i);if(item.has("content")){JSONArray parts=item.getJSONArray("content");for(int j=0;j<parts.length();j++){JSONObject part=parts.getJSONObject(j);if(part.has("text"))return part.getString("text");}}}
-            return draft;
-        }catch(Exception e){return draft;}
-    }
-
     private void chooseDraft(){
         String[] types={"لایحه دفاعیه","دادخواست حقوقی","اظهارنامه رسمی","شکواییه کیفری","تأمین دلیل و کارشناسی"};
         new AlertDialog.Builder(this).setTitle("تنظیم حرفه‌ای متن حقوقی").setItems(types,(d,which)->showProfessionalForm(types[which])).show();
@@ -300,13 +198,17 @@ public class LegalCaseActivity extends AppCompatActivity {
         StringBuilder out=new StringBuilder();
         for(String x:get("notes"))if(x.contains(q))out.append("یادداشت: ").append(x).append("\n\n");
         for(String x:get("drafts"))if(x.contains(q))out.append("پیش‌نویس: ").append(x).append("\n\n");
+        for(String x:get("events"))if(x.contains(q))out.append("رویداد: ").append(x).append("\n\n");
+        for(String x:get("evidence_matrix"))if(x.contains(q))out.append("ادعا و دلیل: ").append(x).append("\n\n");
         for(String x:get("analyses"))if(x.contains(q))out.append("تحلیل سند: ").append(x).append("\n\n");
         message(out.length()==0?"نتیجه‌ای پیدا نشد.":out.toString());
     }
     private void refresh(){
-        if(timeline==null)return;timeline.removeAllViews();
-        Set<String> docs=get("docs"),notes=get("notes"),drafts=get("drafts"),analyses=get("analyses");
-        if(docs.isEmpty()&&notes.isEmpty()&&drafts.isEmpty()&&analyses.isEmpty()){TextView e=text("هنوز سند یا یادداشتی در این پرونده نیست.",14,Color.rgb(155,178,191),Typeface.NORMAL);e.setGravity(Gravity.RIGHT);timeline.addView(e);return;}
+        if(timeline==null)return;updateProfileSummary();timeline.removeAllViews();
+        Set<String> docs=get("docs"),notes=get("notes"),drafts=get("drafts"),analyses=get("analyses"),events=get("events"),matrix=get("evidence_matrix");
+        if(docs.isEmpty()&&notes.isEmpty()&&drafts.isEmpty()&&analyses.isEmpty()&&events.isEmpty()&&matrix.isEmpty()){TextView e=text("هنوز سند یا یادداشتی در این پرونده نیست.",14,Color.rgb(155,178,191),Typeface.NORMAL);e.setGravity(Gravity.RIGHT);timeline.addView(e);return;}
+        for(String x:events)addRow("🕒 رویداد خط زمانی",x,v->message(x));
+        for(String x:matrix)addRow("⚖ ادعا و دلیل",x,v->message(x));
         for(String x:docs)addRow("📎 سند","PDF یا تصویر ذخیره‌شده",v->openUri(x));
         for(String x:notes)addRow("✍ یادداشت",x,null);
         for(String x:drafts)addRow("⚖ پیش‌نویس حقوقی",x,v->message(x));
