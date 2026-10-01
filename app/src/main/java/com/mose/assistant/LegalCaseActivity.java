@@ -47,8 +47,8 @@ public class LegalCaseActivity extends AppCompatActivity {
         if(uri==null)return;
         try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}
         add("docs",uri.toString());refresh();
-        new AlertDialog.Builder(this).setTitle("سند ذخیره شد").setMessage("سند در پرونده «"+caseName+"» ذخیره شد. اکنون برای تحلیل حقوقی ارسال شود؟")
-                .setNegativeButton("فعلاً نه",null).setPositiveButton("تحلیل شود",(d,w)->confirmDocumentAnalysis(uri)).show();
+        new AlertDialog.Builder(this).setTitle("سند ذخیره شد").setMessage("سند در پرونده «"+caseName+"» ذخیره شد. اگر PDF متنی است، اکنون روی همین گوشی استخراج شود؟")
+                .setNegativeButton("فعلاً نه",null).setPositiveButton("استخراج محلی",(d,w)->analyzeLocalPdf(uri,getDisplayName(uri))).show();
     });
 
     @Override protected void onCreate(Bundle b){
