@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.provider.ContactsContract;
+import android.provider.CalendarContract;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -227,9 +228,9 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
         liveText.setText(raw); addBubble("سلطان", raw, true);
         if(t.contains("hi mose")||t.contains("های موز")||t.equals("موز")) { reply("چشم سلطان، گوش می‌دهم."); return; }
         if(t.contains("وکیل")) { showLawyerModule(); return; }
-        if(t.contains("حسابدار")) { reply("چشم سلطان. حسابدار Mose آماده ثبت هزینه، بدهی و گزارش مالی است."); return; }
-        if(t.contains("منشی")) { reply("چشم سلطان. منشی Mose آماده تماس، پیام و برنامه‌ریزی است."); return; }
-        if(t.contains("کارمند")) { reply("چشم سلطان. کارمند Mose آماده پیگیری مأموریت است."); return; }
+        if(t.contains("حسابدار")) { showRoleModule("حسابدار"); return; }
+        if(t.contains("منشی")) { showRoleModule("منشی"); return; }
+        if(t.contains("کارمند")) { showRoleModule("کارمند"); return; }
         if(t.contains("واتساپ")) { openPackage("com.whatsapp","واتساپ"); return; }
         if(t.contains("تلگرام")) { openPackage("org.telegram.messenger","تلگرام"); return; }
         if(t.contains("اینستاگرام")) { openPackage("com.instagram.android","اینستاگرام"); return; }
@@ -298,6 +299,48 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
             }
         });
         dialog.show();
+    }
+
+    private void showRoleModule(String role) {
+        String title;
+        String message;
+        String action;
+        if(role.equals("حسابدار")) {
+            title = "◈ حسابدار Mose";
+            message = "مرکز فایل‌های مالی، هزینه‌ها و گزارش‌ها. برای شروع یک سند مالی از گوشی انتخاب کنید.";
+            action = "انتخاب فایل مالی";
+        } else if(role.equals("منشی")) {
+            title = "✦ منشی Mose";
+            message = "مرکز تماس و مخاطبین. برای انتخاب شخص، دفترچه تلفن گوشی را باز کنید.";
+            action = "بازکردن مخاطبین";
+        } else {
+            title = "⌁ کارمند Mose";
+            message = "مرکز برنامه‌ها و پیگیری کارها. برای مشاهده برنامه‌ها، تقویم گوشی را باز کنید.";
+            action = "بازکردن تقویم";
+        }
+        liveText.setText(role + " Mose");
+        addBubble("Mose", "چشم سلطان؛ بخش " + role + " باز شد.", false);
+        say("Cheshm, Soltan.");
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setNegativeButton("بستن", null)
+                .setPositiveButton(action, (d, w) -> {
+                    try {
+                        if(role.equals("حسابدار")) {
+                            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                            pick.setType("*/*");
+                            pick.addCategory(Intent.CATEGORY_OPENABLE);
+                            startActivity(pick);
+                        } else if(role.equals("منشی")) {
+                            startActivity(new Intent(Intent.ACTION_VIEW, ContactsContract.Contacts.CONTENT_URI));
+                        } else {
+                            startActivity(new Intent(Intent.ACTION_VIEW, CalendarContract.CONTENT_URI));
+                        }
+                    } catch(Exception e) {
+                        reply("سلطان، برنامه مربوط روی گوشی باز نشد.");
+                    }
+                }).show();
     }
 
     private String contactNameFrom(String t) {
