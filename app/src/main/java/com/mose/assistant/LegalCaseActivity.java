@@ -120,6 +120,7 @@ public class LegalCaseActivity extends AppCompatActivity {
     private void freeQuickDraft(){
         String q=aiInput.getText().toString().trim();
         if(q.isEmpty()){message("فقط دستور خود را بنویسید؛ مثال: یک دادخواست مطالبه خسارت برایم بنویس.");return;}
+        if(q.contains("مهریه")){showMahriyehInterview(q);return;}
         String type=detectDocumentType(q);
         String authority=blankForDraft(store.getString("profile_authority",""),"[مرجع رسیدگی تکمیل شود]");
         String parties=blankForDraft(store.getString("profile_parties",""),"[مشخصات و سمت طرفین تکمیل شود]");
@@ -132,6 +133,40 @@ public class LegalCaseActivity extends AppCompatActivity {
         aiInput.setText("");
         createProfessionalDraft(type,authority,parties,subject,facts,evidence,request);
     }
+    private void showMahriyehInterview(String instruction){
+        ScrollView scroll=new ScrollView(this);
+        LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(14),dp(4),dp(14),dp(12));box.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);scroll.addView(box);
+        EditText role=field("سمت شما: زوجه یا زوج؟",1);
+        EditText wife=field("نام، نام خانوادگی و کد ملی زوجه",1);
+        EditText husband=field("نام، نام خانوادگی و کد ملی زوج",1);
+        EditText marriage=field("تاریخ عقد و شماره سند ازدواج/دفترخانه",2);
+        EditText amount=field("مهریه دقیق؛ مثال: ۳۱۴ سکه تمام بهار آزادی",1);
+        EditText condition=field("عندالمطالبه یا عندالاستطاعه",1);
+        EditText demand=field("تمام مهریه یا چه مقدار مطالبه می‌شود؟",1);
+        EditText paid=field("پرداخت، بذل یا وصول قبلی؛ اگر ندارد بنویسید ندارد",2);
+        EditText assets=field("آیا تأمین خواسته یا توقیف اموال می‌خواهید؟ اموال شناخته‌شده",2);
+        EditText evidence=field("مدارک موجود: سند ازدواج، شناسنامه، اجرائیه، رسید و...",3);
+        box.addView(role);box.addView(wife);box.addView(husband);box.addView(marriage);box.addView(amount);box.addView(condition);box.addView(demand);box.addView(paid);box.addView(assets);box.addView(evidence);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("مصاحبه تخصصی مهریه").setView(scroll)
+                .setNegativeButton("انصراف",null).setPositiveButton("ساخت متن کامل",null).create();
+        dialog.setOnShowListener(x->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            String ro=role.getText().toString().trim(),wi=wife.getText().toString().trim(),hu=husband.getText().toString().trim(),ma=marriage.getText().toString().trim(),am=amount.getText().toString().trim();
+            if(ro.isEmpty()||wi.isEmpty()||hu.isEmpty()||ma.isEmpty()||am.isEmpty()){message("سمت شما، مشخصات زوجین، اطلاعات عقد و میزان دقیق مهریه الزامی است.");return;}
+            createMahriyehDraft(ro,wi,hu,ma,am,condition.getText().toString().trim(),demand.getText().toString().trim(),paid.getText().toString().trim(),assets.getText().toString().trim(),evidence.getText().toString().trim());
+            dialog.dismiss();
+        }));dialog.show();
+    }
+    private void createMahriyehDraft(String role,String wife,String husband,String marriage,String amount,String condition,String demand,String paid,String assets,String evidence){
+        boolean isHusband=role.contains("زوج")&&!role.contains("زوجه");
+        String draft;
+        if(isHusband){
+            draft="لایحه دفاعیه در پرونده مطالبه مهریه — نسخه قابل ویرایش\n\nبسمه‌تعالی\n\nریاست محترم شعبه رسیدگی‌کننده دادگاه خانواده\n\nموضوع: لایحه دفاعیه در پاسخ به مطالبه مهریه\n\nزوجه/خواهان: "+wife+"\nزوج/خوانده: "+husband+"\nمشخصات نکاح: "+marriage+"\nمیزان مهریه مندرج در سند نکاحیه: "+amount+"\nنوع تعهد اعلامی: "+blankForDraft(condition,"[تکمیل شود]")+"\n\nبا سلام و احترام،\nاینجانب به‌عنوان زوج، ضمن پذیرش اصل مفاد سند رسمی نکاحیه در حدود اصالت و اعتبار آن، دفاعیات و توضیحات خود را بدون اسقاط هیچ‌یک از حقوق قانونی به شرح زیر تقدیم می‌کنم:\n\n۱. میزان مورد مطالبه: "+blankForDraft(demand,"[تکمیل شود]")+"\n۲. سوابق پرداخت، وصول یا بذل: "+blankForDraft(paid,"[تکمیل و مستند شود]")+"\n۳. توضیحات درباره اموال و تأمین خواسته: "+blankForDraft(assets,"[تکمیل شود]")+"\n۴. مدارک قابل ارائه: "+blankForDraft(evidence,"[پیوست‌ها تکمیل شود]")+"\n\nخواسته:\n۱. محاسبه دقیق میزان باقی‌مانده تعهد پس از کسر پرداخت‌ها یا وصول‌های اثبات‌شده؛\n۲. بررسی اصالت و دلالت تمام رسیدها و مستندات طرفین؛\n۳. اتخاذ تصمیم متناسب با وضعیت اثبات‌شده پرونده و مقررات لازم‌الاجرا؛\n۴. جلوگیری از محاسبه یا وصول مضاعف هر میزان که قبلاً پرداخت، وصول یا به‌طور معتبر بذل شده است.\n\nنام و امضا: "+husband+"\nتاریخ: [تکمیل شود]";
+        }else{
+            draft="دادخواست مطالبه مهریه — نسخه قابل ویرایش\n\nبسمه‌تعالی\n\nریاست محترم دادگاه خانواده صالح\n\nخواهان: "+wife+"\nخوانده: "+husband+"\nخواسته: مطالبه "+blankForDraft(demand,amount)+" از مهریه مندرج در سند رسمی ازدواج، به‌همراه هزینه‌های قانونی قابل مطالبه پس از احراز\nبهای خواسته: [بر اساس میزان مورد مطالبه و ضوابط روز تکمیل شود]\n\nدلایل و منضمات:\n۱. تصویر مصدق سند رسمی ازدواج: "+marriage+"\n۲. مدارک هویتی خواهان\n۳. "+blankForDraft(evidence,"سایر مدارک و استعلام‌های لازم") +"\n۴. عندالاقتضاء استعلام اموال و سوابق اجرایی مرتبط\n\nشرح دادخواست\nبا سلام و احترام،\nبر اساس سند رسمی ازدواج با مشخصات فوق، خوانده متعهد به تأدیه مهریه به میزان "+amount+" شده است. وضعیت تعهد در سند به صورت "+blankForDraft(condition,"[عندالمطالبه/عندالاستطاعه تکمیل شود]")+" اعلام شده است. میزان مورد مطالبه در این دادخواست "+blankForDraft(demand,amount)+" است.\n\nسوابق پرداخت، وصول یا بذل احتمالی: "+blankForDraft(paid,"موردی اعلام نشده است")+"\n\nبا وجود استحقاق خواهان بر اساس مفاد سند نکاحیه، میزان مورد مطالبه تاکنون حسب اظهارات ارائه‌شده وصول نشده است. لذا تقاضای رسیدگی، بررسی سند و سوابق پرداخت و صدور حکم نسبت به میزان اثبات‌شده و باقی‌مانده مهریه را دارم.\n\nدرخواست‌های تکمیلی:\n۱. صدور حکم بر محکومیت خوانده به پرداخت میزان باقی‌مانده و اثبات‌شده مهریه؛\n۲. احتساب و کسر هر مبلغ یا مالی که پرداخت یا وصول آن با دلیل معتبر ثابت شود؛\n۳. تصمیم نسبت به هزینه‌های قانونی قابل مطالبه پس از احراز؛\n۴. "+blankForDraft(assets,"در صورت وجود شرایط قانونی، بررسی درخواست تأمین خواسته و شناسایی اموال")+"\n\nنام و امضای خواهان: "+wife+"\nتاریخ: [تکمیل شود]\n\nکنترل نهایی پیش از ثبت: مرجع صالح، نشانی طرفین، بهای خواسته، وضعیت اجرای ثبتی قبلی، میزان دقیق مورد مطالبه و پیوست‌های مصدق باید بررسی شود.";
+        }
+        add("drafts",draft);aiLog.setText(draft);refresh();showOutputActions(draft);
+    }
+
     private String detectDocumentType(String q){
         if(q.contains("شکواییه")||q.contains("شکایت کیفری")||q.contains("جرم"))return "شکواییه کیفری";
         if(q.contains("اظهارنامه"))return "اظهارنامه رسمی";
