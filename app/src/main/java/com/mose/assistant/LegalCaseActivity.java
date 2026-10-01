@@ -35,6 +35,9 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader;
+import com.tom_roush.pdfbox.pdmodel.PDDocument;
+import com.tom_roush.pdfbox.text.PDFTextStripper;
 
 public class LegalCaseActivity extends AppCompatActivity {
     private static final int NAVY=Color.rgb(2,23,39),CARD=Color.rgb(16,42,61),GOLD=Color.rgb(230,181,76),CYAN=Color.rgb(47,214,190);
@@ -49,7 +52,7 @@ public class LegalCaseActivity extends AppCompatActivity {
     });
 
     @Override protected void onCreate(Bundle b){
-        super.onCreate(b);getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(NAVY);
+        super.onCreate(b);PDFBoxResourceLoader.init(getApplicationContext());getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(NAVY);
         caseId=getIntent().getStringExtra("case_id");caseName=getIntent().getStringExtra("case_name");
         if(caseId==null||caseName==null){finish();return;}
         store=getSharedPreferences("lawyer_case_"+caseId,MODE_PRIVATE);build();
@@ -65,23 +68,50 @@ public class LegalCaseActivity extends AppCompatActivity {
         TextView aiTitle=text("✦ وکیل هوشمند",19,GOLD,Typeface.BOLD);aiTitle.setGravity(Gravity.RIGHT);aiCard.addView(aiTitle);
         aiLog=text("سلطان، سؤال حقوقی یا دستور تنظیم متن را بفرمایید.",14,Color.rgb(247,231,207),Typeface.NORMAL);aiLog.setGravity(Gravity.RIGHT);aiLog.setPadding(0,dp(10),0,dp(10));aiCard.addView(aiLog);
         aiInput=new EditText(this);aiInput.setHint("سؤال یا دستور شما؛ فقط همین متن ارسال می‌شود");aiInput.setTextColor(Color.WHITE);aiInput.setHintTextColor(Color.rgb(177,150,130));aiInput.setTextDirection(View.TEXT_DIRECTION_RTL);aiInput.setMinLines(2);aiCard.addView(aiInput,params(-1,-2,4,8));
-        LinearLayout aiButtons=new LinearLayout(this);aiButtons.setOrientation(LinearLayout.HORIZONTAL);
-        Button settings=button("اتصال Gemini برای PDF");settings.setOnClickListener(v->configureAi());aiButtons.addView(settings,new LinearLayout.LayoutParams(0,dp(50),1));
-        Button send=button("ارسال سؤال");send.setOnClickListener(v->askAi());LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(0,dp(50),1);sp.setMargins(dp(8),0,0,0);aiButtons.addView(send,sp);
-        aiCard.addView(aiButtons);
-        Button reviewers=button("اتصال DeepSeek و OpenAI (الزامی)");reviewers.setOnClickListener(v->configureReviewers());aiCard.addView(reviewers,params(-1,dp(48),9,0));
+        Button freeWrite=button("ساخت و ذخیره متن رایگان");
+        freeWrite.setOnClickListener(v->freeQuickDraft());aiCard.addView(freeWrite,params(-1,dp(52),8,0));
+        TextView offline=text("نسخه رایگان و آفلاین — بدون کلید API و بدون ارسال اطلاعات",12,Color.rgb(148,173,188),Typeface.NORMAL);
+        offline.setGravity(Gravity.RIGHT);offline.setPadding(0,dp(8),0,0);aiCard.addView(offline);
         root.addView(aiCard,params(-1,-2,4,14));
 
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
         root.addView(action("✍ ثبت یادداشت و اقدام","جلسه، تماس، مهلت یا اقدام بعدی",v->input("یادداشت پرونده","متن یادداشت",x->{add("notes",x);refresh();message("یادداشت با موفقیت در پرونده ذخیره شد.");})));
         root.addView(action("⚖ تنظیم متن حقوقی","لایحه، دادخواست، اظهارنامه یا شکواییه",v->chooseDraft()));
-        root.addView(action("🔎 تحلیل هوشمند PDF","انتخاب سند، استخراج نکات و راستی‌آزمایی چندمدلی",v->chooseDocumentForAnalysis()));
+        root.addView(action("🔎 تحلیل رایگان PDF","استخراج متن و شناسایی اطلاعات روی همین گوشی",v->chooseDocumentForLocalAnalysis()));
         root.addView(action("⌕ جست‌وجوی داخل پرونده","جست‌وجو در یادداشت‌ها و پیش‌نویس‌ها",v->input("جست‌وجو","عبارت موردنظر",this::search)));
 
         TextView h=text("محتوای پرونده",18,Color.WHITE,Typeface.BOLD);h.setGravity(Gravity.RIGHT);h.setPadding(0,dp(20),0,dp(8));root.addView(h);
         timeline=new LinearLayout(this);timeline.setOrientation(LinearLayout.VERTICAL);root.addView(timeline);refresh();
 
         Button back=button("بازگشت به فهرست پرونده‌ها");back.setOnClickListener(v->finish());root.addView(back,params(-1,dp(54),20,0));setContentView(scroll);
+    }
+
+    private void freeQuickDraft(){
+        String q=aiInput.getText().toString().trim();
+        if(q.isEmpty()){message("ابتدا موضوع یا توضیحات متن را بنویسید.");return;}
+        String draft="یادداشت حقوقی پرونده «"+caseName+"»\n\nموضوع و شرح شما:\n"+q+"\n\nموارد لازم برای تکمیل:\n۱. مشخصات کامل طرفین و سمت آنان\n۲. ترتیب زمانی رویدادها\n۳. خواسته دقیق و قابل اندازه‌گیری\n۴. قراردادها، مکاتبات، رسیدها و اسامی شهود\n۵. مرجع صالح و مهلت احتمالی\n\n⚠ این نسخه رایگان محلی است؛ شماره ماده یا واقعیت جدیدی به آن افزوده نشده است.";
+        aiInput.setText("");aiLog.setText(draft);add("drafts",draft);refresh();message("متن رایگان ساخته و در پرونده ذخیره شد.");
+    }
+    private void chooseDocumentForLocalAnalysis(){
+        Set<String> docs=get("docs");
+        if(docs.isEmpty()){message("ابتدا یک فایل PDF به پرونده اضافه کنید.");return;}
+        String[] uris=docs.toArray(new String[0]);String[] names=new String[uris.length];
+        for(int i=0;i<uris.length;i++)names[i]=(i+1)+" — "+getDisplayName(Uri.parse(uris[i]));
+        new AlertDialog.Builder(this).setTitle("انتخاب PDF").setItems(names,(d,which)->analyzeLocalPdf(Uri.parse(uris[which]),names[which])).show();
+    }
+    private void analyzeLocalPdf(Uri uri,String name){
+        String mime=getContentResolver().getType(uri);
+        if(mime!=null&&!mime.equals("application/pdf")){message("در نسخه رایگان، استخراج متن فقط برای فایل PDF متنی فعال است.");return;}
+        aiLog.setText("در حال استخراج متن PDF روی گوشی…");
+        new Thread(()->{try(InputStream in=getContentResolver().openInputStream(uri);PDDocument doc=PDDocument.load(in)){
+            String extracted=new PDFTextStripper().getText(doc).trim();
+            if(extracted.isEmpty())throw new Exception("این PDF اسکن تصویری است و متن قابل استخراج ندارد.");
+            String[] keys={"قرارداد","خواهان","خوانده","شاکی","مشتکی","تعهد","مبلغ","تاریخ","مهلت","داوری","کارشناس","امضا","فسخ","خسارت"};
+            StringBuilder found=new StringBuilder();for(String k:keys)if(extracted.contains(k))found.append("• ").append(k).append("\n");
+            String preview=extracted.length()>12000?extracted.substring(0,12000)+"\n… [ادامه متن به علت طول زیاد نمایش داده نشد]":extracted;
+            String result="تحلیل رایگان و محلی PDF\nنام: "+getDisplayName(uri)+"\nتعداد صفحات: "+doc.getNumberOfPages()+"\nتعداد نویسه‌های استخراج‌شده: "+extracted.length()+"\n\nکلیدواژه‌های حقوقی پیدا‌شده:\n"+(found.length()==0?"مورد مشخصی پیدا نشد.\n":found.toString())+"\nمتن استخراج‌شده:\n"+preview+"\n\n⚠ این گزارش استخراج ماشینی است و تأیید حقوقی هوش مصنوعی محسوب نمی‌شود.";
+            runOnUiThread(()->{aiLog.setText(result);add("analyses",result);refresh();message("متن PDF استخراج و در پرونده ذخیره شد.");});
+        }catch(Exception e){String err=e.getMessage()==null?"فایل قابل خواندن نیست.":e.getMessage();runOnUiThread(()->aiLog.setText("تحلیل محلی انجام نشد: "+err+"\nاگر PDF اسکن‌شده است، نسخه متنی یا تصاویر صفحات را استفاده کنید."));}}).start();
     }
 
     private void configureAi(){
@@ -234,12 +264,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         }
         String draft="پیش‌نویس "+type+"\n\n"+body+"\n\n⚠ این نسخه محلی است و هنوز تأیید چندمدلی نشده است.";
         add("drafts",draft);refresh();
-        SharedPreferences ai=getSharedPreferences("mose_private_settings",MODE_PRIVATE);String dk=ai.getString("deepseek_key",""),ok=ai.getString("openai_key","");
-        if(dk.isEmpty()||ok.isEmpty()){message(draft+"\n\nنسخه اولیه ذخیره شد. برای تکمیل هوشمند، اتصال الزامی DeepSeek و OpenAI را ثبت کنید.");return;}
-        new AlertDialog.Builder(this).setTitle("پیش‌نویس ذخیره شد").setMessage("نسخه اولیه نوشته و ذخیره شد. برای تکمیل حرفه‌ای و بازبینی چندمدلی ارسال شود؟")
-                .setNegativeButton("فعلاً نه",(d,w)->message(draft)).setPositiveButton("تکمیل هوشمند",(d,w)->{
-                    aiInput.setText("یک "+type+" حرفه‌ای و قابل ویرایش بر اساس حقوق ایران تنظیم کن. موضوع و اطلاعات: "+facts+"\nپیش‌نویس محلی: "+draft);askAi();
-                }).show();
+        message(draft);
     }
     private void search(String q){
         StringBuilder out=new StringBuilder();
