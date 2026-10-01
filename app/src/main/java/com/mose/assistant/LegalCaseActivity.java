@@ -41,11 +41,17 @@ import org.json.JSONObject;
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader;
 import com.tom_roush.pdfbox.pdmodel.PDDocument;
 import com.tom_roush.pdfbox.text.PDFTextStripper;
+import com.mose.assistant.data.MoseLegalDatabase;
+import com.mose.assistant.data.LegalDao;
+import com.mose.assistant.data.LegalCaseEntity;
+import com.mose.assistant.data.CaseItemEntity;
+import com.mose.assistant.data.LegalDraftEntity;
+import java.util.List;
 
 public class LegalCaseActivity extends AppCompatActivity {
     private static final int NAVY=Color.rgb(2,23,39),CARD=Color.rgb(16,42,61),GOLD=Color.rgb(230,181,76),CYAN=Color.rgb(47,214,190);
     private SharedPreferences store; private String caseId,caseName; private LinearLayout timeline;
-    private EditText aiInput; private TextView aiLog,profileSummary;
+    private EditText aiInput; private TextView aiLog,profileSummary; private MoseLegalDatabase legalDb;
     private final ActivityResultLauncher<String[]> picker=registerForActivityResult(new ActivityResultContracts.OpenDocument(),uri->{
         if(uri==null)return;
         try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}
@@ -58,7 +64,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         super.onCreate(b);PDFBoxResourceLoader.init(getApplicationContext());getWindow().setStatusBarColor(NAVY);getWindow().setNavigationBarColor(NAVY);
         caseId=getIntent().getStringExtra("case_id");caseName=getIntent().getStringExtra("case_name");
         if(caseId==null||caseName==null){finish();return;}
-        store=getSharedPreferences("lawyer_case_"+caseId,MODE_PRIVATE);build();
+        store=getSharedPreferences("lawyer_case_"+caseId,MODE_PRIVATE);legalDb=MoseLegalDatabase.get(this);migrateCaseToProfessionalDatabase();build();
     }
 
     private void build(){
@@ -79,6 +85,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         root.addView(aiCard,params(-1,-2,4,14));
 
         root.addView(action("🗂 شناسنامه حرفه‌ای پرونده","مرجع، طرفین، شماره، موضوع، خواسته و وضعیت",v->editCaseProfile()));
+        root.addView(action("📋 گزارش ساختاری پرونده","طرفین، وقایع، ادله و وضعیت اعتبار اطلاعات",v->showStructuredCaseReport()));
         root.addView(action("🕒 خط زمانی وقایع","ثبت تاریخ، رویداد و شرح هر اتفاق",v->addTimelineEvent()));
         root.addView(action("⚖ ماتریس ادعا و ادله","ارتباط هر ادعا با دلیل، ایراد و پاسخ",v->addEvidenceMatrix()));
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
@@ -91,6 +98,45 @@ public class LegalCaseActivity extends AppCompatActivity {
         timeline=new LinearLayout(this);timeline.setOrientation(LinearLayout.VERTICAL);root.addView(timeline);refresh();
 
         Button back=button("بازگشت به فهرست پرونده‌ها");back.setOnClickListener(v->finish());root.addView(back,params(-1,dp(54),20,0));setContentView(scroll);
+    }
+
+    private void migrateCaseToProfessionalDatabase(){
+        new Thread(()->{
+            LegalDao dao=legalDb.legalDao();long now=System.currentTimeMillis();
+            LegalCaseEntity existing=dao.findCase(caseId);
+            if(existing==null){
+                String subject=store.getString("profile_subject","");
+                LegalCaseEntity c=new LegalCaseEntity(caseId,caseName,"UNCLASSIFIED",subject.isEmpty()?"UNCLASSIFIED":subject,store.getString("profile_role","CLAIMANT"),"INTAKE",now,now);
+                c.authority=store.getString("profile_authority","");
+                c.opponent=store.getString("profile_parties","");
+                c.claim=store.getString("profile_claim","");
+                dao.saveCase(c);
+            }
+            if(!store.getBoolean("room_migrated_v1",false)){
+                migrateSet(dao,"EVENT",get("events"),"رویداد منتقل‌شده");
+                migrateSet(dao,"NOTE",get("notes"),"یادداشت منتقل‌شده");
+                migrateSet(dao,"EVIDENCE_LINK",get("evidence_matrix"),"ماتریس ادعا و دلیل");
+                migrateSet(dao,"DOCUMENT_URI",get("docs"),"سند محلی پرونده");
+                for(String d:get("drafts"))dao.saveNextDraft(caseId,"LEGACY",d,"منتقل‌شده از نسخه قبلی؛ نیازمند کنترل",now);
+                for(String a:get("analyses"))addDbItem(dao,"ANALYSIS","تحلیل منتقل‌شده",a,"UNVERIFIED");
+                store.edit().putBoolean("room_migrated_v1",true).apply();
+            }
+        }).start();
+    }
+    private void migrateSet(LegalDao dao,String kind,Set<String> values,String title){for(String v:values)addDbItem(dao,kind,title,v,"UNVERIFIED");}
+    private void addDbItem(LegalDao dao,String kind,String title,String content,String status){
+        long now=System.currentTimeMillis();dao.addItem(new CaseItemEntity(caseId,kind,title,content,status,now,now));
+    }
+    private void showStructuredCaseReport(){
+        aiLog.setText("در حال خواندن پرونده ساختاری...");
+        new Thread(()->{
+            LegalDao dao=legalDb.legalDao();LegalCaseEntity c=dao.findCase(caseId);List<CaseItemEntity> items=dao.items(caseId);List<LegalDraftEntity> drafts=dao.drafts(caseId);
+            StringBuilder out=new StringBuilder("گزارش ساختاری پرونده «").append(caseName).append("»\n\n");
+            if(c!=null)out.append("حوزه: ").append(c.domain).append("\nنوع موضوع: ").append(c.matterType).append("\nسمت: ").append(c.userRole).append("\nمرحله: ").append(c.workflowState).append("\nطرف مقابل: ").append(blank(c.opponent)).append("\nخواسته: ").append(blank(c.claim)).append("\n\n");
+            String last="";int n=1;for(CaseItemEntity i:items){if(!last.equals(i.kind)){last=i.kind;out.append("\n[").append(last).append("]\n");}out.append(n++).append(". ").append(i.title).append("\n").append(i.content).append("\nوضعیت اعتبار: ").append(i.verificationStatus).append("\n\n");}
+            out.append("تعداد نسخه‌های پیش‌نویس: ").append(drafts.size()).append("\n\nراهنما: اطلاعات منتقل‌شده تا زمان تطبیق با اصل سند، بررسی‌نشده محسوب می‌شود.");
+            runOnUiThread(()->{aiLog.setText(out.toString());message(out.toString());});
+        }).start();
     }
 
     private void editCaseProfile(){
