@@ -16,6 +16,8 @@ public interface LegalDao {
     @Query("SELECT * FROM case_items WHERE caseId=:caseId ORDER BY occurredAt, id") List<CaseItemEntity> items(String caseId);
     @Query("SELECT * FROM case_items WHERE caseId=:caseId AND kind=:kind ORDER BY id") List<CaseItemEntity> itemsByKind(String caseId,String kind);
     @Query("SELECT * FROM legal_drafts WHERE caseId=:caseId ORDER BY createdAt DESC") List<LegalDraftEntity> drafts(String caseId);
+    @Query("SELECT * FROM legal_drafts WHERE caseId=:caseId ORDER BY id DESC LIMIT 1") LegalDraftEntity latestDraft(String caseId);
+    @Query("SELECT COUNT(*) FROM case_items WHERE caseId=:caseId AND kind=:kind") int countItemsByKind(String caseId,String kind);
     @Query("SELECT COALESCE(MAX(version),0)+1 FROM legal_drafts WHERE caseId=:caseId AND draftType=:type") int nextDraftVersion(String caseId,String type);
     @Query("UPDATE legal_cases SET workflowState=:state,updatedAt=:time WHERE id=:caseId") void updateWorkflow(String caseId,String state,long time);
     @Transaction default long saveNextDraft(String caseId,String type,String content,String validation,long time){
