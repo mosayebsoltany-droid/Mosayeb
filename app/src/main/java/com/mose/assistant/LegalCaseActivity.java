@@ -47,7 +47,10 @@ import com.mose.assistant.data.LegalCaseEntity;
 import com.mose.assistant.data.CaseItemEntity;
 import com.mose.assistant.data.LegalDraftEntity;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import com.mose.assistant.legal.ProfessionalInterviewController;
+import com.mose.assistant.legal.ContractDraftEngine;
 
 public class LegalCaseActivity extends AppCompatActivity {
     private static final int NAVY=Color.rgb(2,23,39),CARD=Color.rgb(16,42,61),GOLD=Color.rgb(230,181,76),CYAN=Color.rgb(47,214,190);
@@ -88,6 +91,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         root.addView(action("🗂 شناسنامه حرفه‌ای پرونده","مرجع، طرفین، شماره، موضوع، خواسته و وضعیت",v->editCaseProfile()));
         root.addView(action("📋 گزارش ساختاری پرونده","طرفین، وقایع، ادله و وضعیت اعتبار اطلاعات",v->showStructuredCaseReport()));
         root.addView(action("🧭 مصاحبه هوشمند پرونده","سؤال‌به‌سؤال، ذخیره پاسخ و گزارش نقاط ضعف",v->startProfessionalInterview()));
+        root.addView(action("📝 پیش‌نویس آزمایشی از مصاحبه","تولید متن فقط از پاسخ‌ها و نمایش موانع ثبت",v->buildDraftFromInterview()));
         root.addView(action("🕒 خط زمانی وقایع","ثبت تاریخ، رویداد و شرح هر اتفاق",v->addTimelineEvent()));
         root.addView(action("⚖ ماتریس ادعا و ادله","ارتباط هر ادعا با دلیل، ایراد و پاسخ",v->addEvidenceMatrix()));
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
@@ -100,6 +104,20 @@ public class LegalCaseActivity extends AppCompatActivity {
         timeline=new LinearLayout(this);timeline.setOrientation(LinearLayout.VERTICAL);root.addView(timeline);refresh();
 
         Button back=button("بازگشت به فهرست پرونده‌ها");back.setOnClickListener(v->finish());root.addView(back,params(-1,dp(54),20,0));setContentView(scroll);
+    }
+
+    private void buildDraftFromInterview(){
+        aiLog.setText("در حال ساخت و کنترل پیش‌نویس از پاسخ‌های مصاحبه...");
+        new Thread(()->{
+            Map<String,String> answers=new LinkedHashMap<>();
+            for(CaseItemEntity item:legalDb.legalDao().itemsByKind(caseId,"INTAKE_ANSWER"))answers.put(item.title,item.content);
+            ContractDraftEngine.Result result=ContractDraftEngine.create(answers,caseName);
+            long now=System.currentTimeMillis();
+            legalDb.legalDao().saveNextDraft(caseId,"CONTRACT_CLAIM",result.draft,result.validation,now);
+            legalDb.legalDao().updateWorkflow(caseId,result.ready?"DRAFT_REVIEW":"INTAKE_INCOMPLETE",now);
+            String display=result.draft+"\n\n----------------\n\n"+result.validation;
+            runOnUiThread(()->{aiLog.setText(display);message(display);});
+        }).start();
     }
 
     private void startProfessionalInterview(){
