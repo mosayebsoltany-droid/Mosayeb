@@ -1,0 +1,65 @@
+name: ELAT Native Android
+
+on:
+  push:
+    branches: [ elat-native-v1 ]
+    paths:
+      - 'elatApp/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/elat-native.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: elat-native-v1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        run: gradle :elatApp:assembleDebug --stacktrace
+
+      - name: Build release APK
+        run: gradle :elatApp:assembleRelease --stacktrace
+
+      - name: Check release APK size
+        shell: bash
+        run: |
+          APK=$(find elatApp/build/outputs/apk/release -name '*.apk' | head -n 1)
+          test -n "$APK"
+          BYTES=$(stat -c%s "$APK")
+          LIMIT=$((25 * 1024 * 1024))
+          echo "Release APK size: $BYTES bytes"
+          if [ "$BYTES" -ge "$LIMIT" ]; then
+            echo "APK exceeds the 25 MiB target."
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elat-debug-apk
+          path: elatApp/build/outputs/apk/debug/*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elat-release-apk
+          path: elatApp/build/outputs/apk/release/*.apk
