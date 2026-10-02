@@ -51,6 +51,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 import com.mose.assistant.legal.ProfessionalInterviewController;
 import com.mose.assistant.legal.ContractDraftEngine;
+import com.mose.assistant.legal.CaseReviewEngine;
 
 public class LegalCaseActivity extends AppCompatActivity {
     private static final int NAVY=Color.rgb(2,23,39),CARD=Color.rgb(16,42,61),GOLD=Color.rgb(230,181,76),CYAN=Color.rgb(47,214,190);
@@ -92,6 +93,7 @@ public class LegalCaseActivity extends AppCompatActivity {
         root.addView(action("📋 گزارش ساختاری پرونده","طرفین، وقایع، ادله و وضعیت اعتبار اطلاعات",v->showStructuredCaseReport()));
         root.addView(action("🧭 مصاحبه هوشمند پرونده","سؤال‌به‌سؤال، ذخیره پاسخ و گزارش نقاط ضعف",v->startProfessionalInterview()));
         root.addView(action("📝 پیش‌نویس آزمایشی از مصاحبه","تولید متن فقط از پاسخ‌ها و نمایش موانع ثبت",v->buildDraftFromInterview()));
+        root.addView(action("🛡 بازبینی سه‌جانبه و تأیید","دیدگاه خواهان، خوانده و قاضی؛ تصمیم نهایی انسانی",v->runFinalCaseReview()));
         root.addView(action("🕒 خط زمانی وقایع","ثبت تاریخ، رویداد و شرح هر اتفاق",v->addTimelineEvent()));
         root.addView(action("⚖ ماتریس ادعا و ادله","ارتباط هر ادعا با دلیل، ایراد و پاسخ",v->addEvidenceMatrix()));
         root.addView(action("📎 افزودن PDF یا تصویر","سند را فقط در همین پرونده نگهداری کن",v->picker.launch(new String[]{"application/pdf","image/*","text/*"})));
@@ -104,6 +106,33 @@ public class LegalCaseActivity extends AppCompatActivity {
         timeline=new LinearLayout(this);timeline.setOrientation(LinearLayout.VERTICAL);root.addView(timeline);refresh();
 
         Button back=button("بازگشت به فهرست پرونده‌ها");back.setOnClickListener(v->finish());root.addView(back,params(-1,dp(54),20,0));setContentView(scroll);
+    }
+
+    private void runFinalCaseReview(){
+        aiLog.setText("در حال بازبینی پرونده از سه دیدگاه...");
+        new Thread(()->{
+            Map<String,String> answers=new LinkedHashMap<>();
+            for(CaseItemEntity item:legalDb.legalDao().itemsByKind(caseId,"INTAKE_ANSWER"))answers.put(item.title,item.content);
+            LegalDraftEntity latest=legalDb.legalDao().latestDraft(caseId);
+            int docs=legalDb.legalDao().countItemsByKind(caseId,"DOCUMENT_URI");
+            CaseReviewEngine.Review review=CaseReviewEngine.reviewContractClaim(answers,docs,latest==null?"":latest.validationReport);
+            legalDb.legalDao().updateWorkflow(caseId,review.approvable?"HUMAN_REVIEW":"REVIEW_BLOCKED",System.currentTimeMillis());
+            runOnUiThread(()->showFinalReview(review,latest));
+        }).start();
+    }
+    private void showFinalReview(CaseReviewEngine.Review review,LegalDraftEntity latest){
+        aiLog.setText(review.report);
+        AlertDialog.Builder b=new AlertDialog.Builder(this).setTitle("نتیجه بازبینی سه‌جانبه").setMessage(review.report).setNegativeButton("نیاز به اصلاح",(d,w)->{
+            new Thread(()->legalDb.legalDao().updateWorkflow(caseId,"REVISION_REQUIRED",System.currentTimeMillis())).start();
+        });
+        if(review.approvable&&latest!=null)b.setPositiveButton("تأیید انسانی نسخه",(d,w)->{
+            new Thread(()->{
+                legalDb.legalDao().updateDraftStatus(latest.id,"HUMAN_APPROVED",review.report);
+                legalDb.legalDao().updateWorkflow(caseId,"HUMAN_APPROVED",System.currentTimeMillis());
+                runOnUiThread(()->{aiLog.setText("نسخه "+latest.version+" با تأیید انسانی ثبت شد. هنوز قبل از ارائه رسمی باید اصل اسناد و اطلاعات هویتی کنترل شود.");message("نسخه تأیید شد و در پرونده باقی ماند.");});
+            }).start();
+        });else b.setPositiveButton("رفع موانع",null);
+        b.show();
     }
 
     private void buildDraftFromInterview(){
