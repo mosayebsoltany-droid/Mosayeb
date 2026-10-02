@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "HiMose"
-include(":app")
+rootProject.name = "ELAT"
+include(":elatApp")
