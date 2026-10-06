@@ -10,8 +10,8 @@ android {
         applicationId = "com.mosayeb.himose.personal"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.0.0-alpha"
+        versionCode = 11
+        versionName = "1.1.0-accounting"
     }
 
     buildTypes {
