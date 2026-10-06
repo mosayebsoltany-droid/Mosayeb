@@ -296,6 +296,11 @@ public class MainActivity extends AppCompatActivity implements RecognitionListen
     }
 
     private void showRoleModule(String role) {
+        if(role.equals("حسابدار")) {
+            startActivity(new Intent(this, AccountantActivity.class));
+            sayWithStyle("سلطان، حساب‌ها در خدمت شماست.", "Soltan, hesabha dar khedmat-e shomast.", false);
+            return;
+        }
         String title;
         String message;
         String action;
