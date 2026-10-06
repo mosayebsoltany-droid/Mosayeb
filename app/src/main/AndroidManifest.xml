@@ -29,6 +29,7 @@
 
         <activity android:name=".LegalCaseActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".LawyerActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".AccountantActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
